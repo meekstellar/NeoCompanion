@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/dto/fitting.dart';
+import '../domain/eft_format.dart';
 import '../domain/slot_grouping.dart';
 import '../fitting_providers.dart';
 
@@ -57,7 +59,23 @@ class _FittingDetailView extends StatelessWidget {
     final groups = groupBySlot(fitting.items);
 
     return Scaffold(
-      appBar: AppBar(title: Text(fitting.name)),
+      appBar: AppBar(
+        title: Text(fitting.name),
+        actions: [
+          IconButton(
+            tooltip: 'Copy as EFT',
+            icon: const Icon(Icons.content_copy_outlined),
+            onPressed: () async {
+              final eft = exportEft(fitting, typeNames);
+              await Clipboard.setData(ClipboardData(text: eft));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Copied as EFT')),
+              );
+            },
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
