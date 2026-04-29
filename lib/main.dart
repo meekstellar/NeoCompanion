@@ -7,6 +7,7 @@ import 'core/config/flavor.dart';
 import 'core/notifications/notification_providers.dart';
 import 'core/notifications/notification_service.dart';
 import 'features/characters/presentation/character_list_screen.dart';
+import 'features/skills/skill_notification_sync_scope.dart';
 
 Future<void> bootstrap(Flavor flavor) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +43,7 @@ class NeoCompanionApp extends ConsumerWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const CharacterListScreen(),
+      home: const SkillNotificationSyncScope(child: CharacterListScreen()),
     );
   }
 }

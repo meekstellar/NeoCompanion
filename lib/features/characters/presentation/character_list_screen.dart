@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/token_set.dart';
+import '../../../core/notifications/notification_providers.dart';
 import 'character_sheet_screen.dart';
 
 class CharacterListScreen extends ConsumerWidget {
@@ -64,10 +67,17 @@ class CharacterListScreen extends ConsumerWidget {
 
   Future<void> _addCharacter(BuildContext context, WidgetRef ref) async {
     final sso = ref.read(eveSsoServiceProvider);
+    final wasEmpty = (ref.read(storedCharactersProvider).value ?? const [])
+        .isEmpty;
     try {
       final character = await sso.signIn();
       ref.read(activeCharacterIdProvider.notifier).set(character.id);
       ref.invalidate(storedCharactersProvider);
+      if (wasEmpty) {
+        // First character — ask for notification permission so skill-completion
+        // reminders can fire. iOS only prompts the user once.
+        unawaited(ref.read(notificationServiceProvider).requestPermissions());
+      }
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

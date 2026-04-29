@@ -1,14 +1,50 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/auth/auth_providers.dart';
 import '../../core/network/network_providers.dart';
+import '../../core/notifications/notification_providers.dart';
 import '../characters/character_providers.dart';
 import 'data/dto/character_skills.dart';
 import 'data/dto/skill_queue_entry.dart';
 import 'data/skill_repository.dart';
+import 'domain/skill_notification_scheduler.dart';
 
 final skillRepositoryProvider = Provider<SkillRepository>((ref) {
   return SkillRepository(ref.watch(esiClientProvider));
 });
+
+final skillNotificationSchedulerProvider =
+    Provider<SkillNotificationScheduler>((ref) {
+  return SkillNotificationScheduler(ref.watch(notificationServiceProvider));
+});
+
+/// Side-effect notifier that watches the known character set and, for each
+/// character, listens to skillQueueProvider — firing the scheduler whenever
+/// fresh queue data lands.
+class SkillNotificationSync extends Notifier<void> {
+  @override
+  void build() {
+    final tokens = ref.watch(storedCharactersProvider).value ?? const [];
+    for (final t in tokens) {
+      ref.listen<AsyncValue<SkillQueueData>>(
+        skillQueueProvider(t.characterId),
+        (prev, next) {
+          next.whenData((data) {
+            ref.read(skillNotificationSchedulerProvider).schedule(
+                  characterId: t.characterId,
+                  queue: data.queue,
+                  skillNames: data.skillNames,
+                );
+          });
+        },
+        fireImmediately: true,
+      );
+    }
+  }
+}
+
+final skillNotificationSyncProvider =
+    NotifierProvider<SkillNotificationSync, void>(SkillNotificationSync.new);
 
 class SkillQueueData {
   const SkillQueueData({
