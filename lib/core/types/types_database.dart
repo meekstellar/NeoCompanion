@@ -53,6 +53,12 @@ class TypesDatabase extends ChangeNotifier {
 
   Map<int, int?> _groupCategory = const {};
   Map<int, int?> _typeGroup = const {};
+  Map<int, List<int>> _typesByGroup = const {};
+  Map<int, List<int>> _groupsByCategory = const {};
+  Map<int, int?> _marketGroupParent = const {};
+  Map<int?, List<int>> _marketGroupChildren = const {};
+  Map<int, List<int>> _typesByMarketGroup = const {};
+  List<int> _typesWithoutMarketGroup = const [];
 
   int? _buildNumber;
   DateTime? _releaseDate;
@@ -81,6 +87,31 @@ class TypesDatabase extends ChangeNotifier {
   String? lookupNpcCorporation(int id) => _npcCorporationNames[id];
   String? lookupAttributeName(int attributeId) =>
       _attributeDisplayNames[attributeId];
+
+  /// Type IDs that belong to [groupId], in no particular order. Empty
+  /// when the group has no types in the local cache.
+  List<int> typesInGroup(int groupId) => _typesByGroup[groupId] ?? const [];
+
+  /// Group IDs that belong to [categoryId], in no particular order.
+  List<int> groupsInCategory(int categoryId) =>
+      _groupsByCategory[categoryId] ?? const [];
+
+  /// Direct child market-group IDs of [parentId]. Pass `null` for the
+  /// roots (market groups with no parent). Drives the in-game market
+  /// browser style hierarchy on the item database screen.
+  List<int> marketGroupChildren(int? parentId) =>
+      _marketGroupChildren[parentId] ?? const [];
+
+  /// Type IDs whose `market_group_id` is exactly [marketGroupId] (i.e.
+  /// directly attached to this group, not to its descendants).
+  List<int> typesInMarketGroup(int marketGroupId) =>
+      _typesByMarketGroup[marketGroupId] ?? const [];
+
+  /// Type IDs that have no `market_group_id` at all (skills, NPCs,
+  /// blueprint copies, …). The screen shows them under an "Other" node.
+  List<int> get typesWithoutMarketGroup => _typesWithoutMarketGroup;
+
+  int? marketGroupParent(int id) => _marketGroupParent[id];
 
   Iterable<MapEntry<int, String>> get entries => _typeNames.entries;
 
@@ -208,17 +239,70 @@ class TypesDatabase extends ChangeNotifier {
           (r['attribute_id']! as num).toInt(): r['display_name'].toString(),
     };
 
-    final typeRows = await db.query('types', columns: ['id', 'group_id']);
+    final typeRows = await db
+        .query('types', columns: ['id', 'group_id', 'market_group_id']);
     _typeGroup = {
       for (final r in typeRows)
         if (r['id'] is num)
           (r['id']! as num).toInt(): (r['group_id'] as num?)?.toInt(),
+    };
+
+    final typesByMarketGroup = <int, List<int>>{};
+    final orphanTypes = <int>[];
+    for (final r in typeRows) {
+      if (r['id'] is! num) continue;
+      final tid = (r['id']! as num).toInt();
+      final mgid = (r['market_group_id'] as num?)?.toInt();
+      if (mgid == null) {
+        orphanTypes.add(tid);
+      } else {
+        typesByMarketGroup.putIfAbsent(mgid, () => []).add(tid);
+      }
+    }
+    _typesByMarketGroup = {
+      for (final e in typesByMarketGroup.entries)
+        e.key: List.unmodifiable(e.value),
+    };
+    _typesWithoutMarketGroup = List.unmodifiable(orphanTypes);
+
+    final marketGroupRows =
+        await db.query('market_groups', columns: ['id', 'parent_id']);
+    _marketGroupParent = {
+      for (final r in marketGroupRows)
+        if (r['id'] is num)
+          (r['id']! as num).toInt(): (r['parent_id'] as num?)?.toInt(),
+    };
+    final children = <int?, List<int>>{};
+    _marketGroupParent.forEach((id, parent) {
+      children.putIfAbsent(parent, () => []).add(id);
+    });
+    _marketGroupChildren = {
+      for (final e in children.entries) e.key: List.unmodifiable(e.value),
     };
     final groupRows = await db.query('groups', columns: ['id', 'category_id']);
     _groupCategory = {
       for (final r in groupRows)
         if (r['id'] is num)
           (r['id']! as num).toInt(): (r['category_id'] as num?)?.toInt(),
+    };
+
+    final typesByGroup = <int, List<int>>{};
+    _typeGroup.forEach((typeId, groupId) {
+      if (groupId == null) return;
+      typesByGroup.putIfAbsent(groupId, () => []).add(typeId);
+    });
+    _typesByGroup = {
+      for (final e in typesByGroup.entries) e.key: List.unmodifiable(e.value),
+    };
+
+    final groupsByCategory = <int, List<int>>{};
+    _groupCategory.forEach((groupId, categoryId) {
+      if (categoryId == null) return;
+      groupsByCategory.putIfAbsent(categoryId, () => []).add(groupId);
+    });
+    _groupsByCategory = {
+      for (final e in groupsByCategory.entries)
+        e.key: List.unmodifiable(e.value),
     };
   }
 
@@ -337,6 +421,12 @@ class TypesDatabase extends ChangeNotifier {
     _attributeDisplayNames = const {};
     _groupCategory = const {};
     _typeGroup = const {};
+    _typesByGroup = const {};
+    _groupsByCategory = const {};
+    _marketGroupParent = const {};
+    _marketGroupChildren = const {};
+    _typesByMarketGroup = const {};
+    _typesWithoutMarketGroup = const [];
     _buildNumber = null;
     _releaseDate = null;
     _installedAt = null;
