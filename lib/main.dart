@@ -4,14 +4,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/auth/auth_providers.dart';
 import 'core/config/app_config.dart';
 import 'core/config/flavor.dart';
+import 'core/notifications/notification_providers.dart';
+import 'core/notifications/notification_service.dart';
 import 'features/characters/presentation/character_list_screen.dart';
 
 Future<void> bootstrap(Flavor flavor) async {
   WidgetsFlutterBinding.ensureInitialized();
   final config = AppConfig.forFlavor(flavor);
+  final notifications = NotificationService();
+  await notifications.initialize();
   runApp(
     ProviderScope(
-      overrides: [appConfigProvider.overrideWithValue(config)],
+      overrides: [
+        appConfigProvider.overrideWithValue(config),
+        notificationServiceProvider.overrideWithValue(notifications),
+      ],
       child: const NeoCompanionApp(),
     ),
   );
