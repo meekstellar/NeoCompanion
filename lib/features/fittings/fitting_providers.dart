@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/network_providers.dart';
-import '../characters/character_providers.dart';
+import '../../core/types/types_database_providers.dart';
 import 'data/dto/fitting.dart';
 import 'data/fitting_repository.dart';
 
@@ -18,25 +18,19 @@ class FittingsData {
 
 final fittingsProvider =
     FutureProvider.family<FittingsData, int>((ref, characterId) async {
+  ref.watch(typesDatabaseRevisionProvider);
   final repo = ref.watch(fittingRepositoryProvider);
-  final character = ref.watch(characterRepositoryProvider);
+  final typesDb = ref.watch(typesDatabaseProvider);
 
   final fittings = await repo.fetchAll(characterId);
 
-  final ids = <int>{
-    for (final f in fittings) ...[
-      f.shipTypeId,
-      for (final i in f.items) i.typeId,
-    ],
-  }.toList();
-
-  var names = <int, String>{};
-  if (ids.isNotEmpty) {
-    try {
-      final resolved = await character.resolveNames(ids);
-      names = {for (final n in resolved) n.id: n.name};
-    } catch (_) {
-      // Render IDs if name resolution fails.
+  final names = <int, String>{};
+  for (final f in fittings) {
+    final ship = typesDb.lookup(f.shipTypeId);
+    if (ship != null) names[f.shipTypeId] = ship;
+    for (final i in f.items) {
+      final n = typesDb.lookup(i.typeId);
+      if (n != null) names[i.typeId] = n;
     }
   }
 

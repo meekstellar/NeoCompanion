@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/auth/auth_providers.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/notifications/notification_providers.dart';
-import '../characters/character_providers.dart';
+import '../../core/types/types_database_providers.dart';
 import 'data/dto/character_skills.dart';
 import 'data/dto/skill_queue_entry.dart';
 import 'data/skill_repository.dart';
@@ -67,20 +67,15 @@ class AllSkillsData {
 
 final allSkillsProvider =
     FutureProvider.family<AllSkillsData, int>((ref, characterId) async {
+  ref.watch(typesDatabaseRevisionProvider);
   final skillRepo = ref.watch(skillRepositoryProvider);
-  final character = ref.watch(characterRepositoryProvider);
+  final typesDb = ref.watch(typesDatabaseProvider);
 
   final skills = await skillRepo.fetchSkills(characterId);
-  final ids = skills.skills.map((s) => s.skillId).toSet().toList();
-
-  var names = <int, String>{};
-  if (ids.isNotEmpty) {
-    try {
-      final resolved = await character.resolveNames(ids);
-      names = {for (final n in resolved) n.id: n.name};
-    } catch (_) {
-      // Fall back to raw IDs in the UI.
-    }
+  final names = <int, String>{};
+  for (final s in skills.skills) {
+    final n = typesDb.lookup(s.skillId);
+    if (n != null) names[s.skillId] = n;
   }
 
   return AllSkillsData(skills: skills, names: names);
@@ -88,8 +83,9 @@ final allSkillsProvider =
 
 final skillQueueProvider =
     FutureProvider.family<SkillQueueData, int>((ref, characterId) async {
+  ref.watch(typesDatabaseRevisionProvider);
   final skills = ref.watch(skillRepositoryProvider);
-  final character = ref.watch(characterRepositoryProvider);
+  final typesDb = ref.watch(typesDatabaseProvider);
 
   final results = await Future.wait([
     skills.fetchQueue(characterId),
@@ -98,15 +94,10 @@ final skillQueueProvider =
   final queue = results[0] as List<SkillQueueEntry>;
   final summary = results[1] as CharacterSkills;
 
-  final ids = queue.map((e) => e.skillId).toSet().toList();
-  var names = <int, String>{};
-  if (ids.isNotEmpty) {
-    try {
-      final resolved = await character.resolveNames(ids);
-      names = {for (final n in resolved) n.id: n.name};
-    } catch (_) {
-      // Fall back to raw IDs in the UI.
-    }
+  final names = <int, String>{};
+  for (final e in queue) {
+    final n = typesDb.lookup(e.skillId);
+    if (n != null) names[e.skillId] = n;
   }
 
   return SkillQueueData(queue: queue, skills: summary, skillNames: names);

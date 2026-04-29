@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/network_providers.dart';
+import '../../core/types/types_database_providers.dart';
 import '../characters/character_providers.dart';
 import 'data/dto/market_order.dart';
 import 'data/market_repository.dart';
@@ -23,32 +24,28 @@ class MarketOrdersData {
 
 final marketOrdersProvider =
     FutureProvider.family<MarketOrdersData, int>((ref, characterId) async {
+  ref.watch(typesDatabaseRevisionProvider);
   final market = ref.watch(marketRepositoryProvider);
   final character = ref.watch(characterRepositoryProvider);
+  final typesDb = ref.watch(typesDatabaseProvider);
 
   final orders = await market.fetchOpenOrders(characterId);
 
-  final ids = <int>{
-    for (final o in orders) ...[o.typeId, o.locationId],
-  }.toList();
-
-  var resolved = <int, String>{};
-  if (ids.isNotEmpty) {
-    try {
-      final names = await character.resolveNames(ids);
-      resolved = {for (final n in names) n.id: n.name};
-    } catch (_) {
-      // Player structures don't resolve via /universe/names/; keep the ID.
-    }
+  final typeNames = <int, String>{};
+  for (final o in orders) {
+    final n = typesDb.lookup(o.typeId);
+    if (n != null) typeNames[o.typeId] = n;
   }
 
-  final typeNames = <int, String>{};
-  final locationNames = <int, String>{};
-  for (final o in orders) {
-    final t = resolved[o.typeId];
-    if (t != null) typeNames[o.typeId] = t;
-    final l = resolved[o.locationId];
-    if (l != null) locationNames[o.locationId] = l;
+  final locationIds = {for (final o in orders) o.locationId}.toList();
+  var locationNames = <int, String>{};
+  if (locationIds.isNotEmpty) {
+    try {
+      final resolved = await character.resolveNames(locationIds);
+      locationNames = {for (final n in resolved) n.id: n.name};
+    } catch (_) {
+      // Player structures keep their raw ID.
+    }
   }
 
   return MarketOrdersData(

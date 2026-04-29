@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/network_providers.dart';
+import '../../core/types/types_database_providers.dart';
 import '../characters/character_providers.dart';
 import 'data/asset_repository.dart';
 import 'data/dto/asset_item.dart';
@@ -23,46 +24,44 @@ class AssetsData {
 
 final assetsProvider =
     FutureProvider.family<AssetsData, int>((ref, characterId) async {
-  final assets = ref.watch(assetRepositoryProvider);
+  ref.watch(typesDatabaseRevisionProvider);
+  final repo = ref.watch(assetRepositoryProvider);
   final character = ref.watch(characterRepositoryProvider);
+  final typesDb = ref.watch(typesDatabaseProvider);
 
-  final items = await assets.fetchAll(characterId);
+  final items = await repo.fetchAll(characterId);
 
-  final typeIds = {for (final i in items) i.typeId}.toList();
-  final locationIds = {for (final i in items) i.locationId}.toList();
-
-  final allIds = <int>{...typeIds, ...locationIds}.toList();
-  var resolved = <int, String>{};
-  if (allIds.isNotEmpty) {
-    try {
-      final names = await character.resolveNames(allIds);
-      resolved = {for (final n in names) n.id: n.name};
-    } catch (_) {
-      // /universe/names/ refuses unknown id types (e.g. structures).
-      // Render raw IDs in those cases.
-    }
-  }
-
+  // Type names come from the local DB; nothing fetched per-screen.
   final typeNames = <int, String>{};
-  for (final id in typeIds) {
-    final name = resolved[id];
-    if (name != null) typeNames[id] = name;
+  for (final item in items) {
+    final name = typesDb.lookup(item.typeId);
+    if (name != null) typeNames[item.typeId] = name;
   }
 
-  // Locations that are themselves another asset (containers / ships).
-  final itemIdToType = {for (final i in items) i.itemId: i.typeId};
-  final locationNames = <int, String>{};
-  for (final id in locationIds) {
-    final direct = resolved[id];
-    if (direct != null) {
-      locationNames[id] = direct;
-      continue;
+  // Locations still go through /universe/names/ (small set, includes
+  // stations and solar systems). Player structures simply stay missing.
+  final locationIds = {for (final i in items) i.locationId}.toList();
+  var locationNames = <int, String>{};
+  if (locationIds.isNotEmpty) {
+    try {
+      final resolved = await character.resolveNames(locationIds);
+      locationNames = {for (final n in resolved) n.id: n.name};
+    } catch (_) {
+      // Render raw IDs.
     }
-    final containerType = itemIdToType[id];
+  }
+
+  // Locations that are themselves an item we own (containers, ships).
+  for (final item in items) {
+    if (locationNames.containsKey(item.locationId)) continue;
+    final containerType = items
+        .where((i) => i.itemId == item.locationId)
+        .map((i) => i.typeId)
+        .firstOrNull;
     if (containerType != null) {
-      final containerName = resolved[containerType];
+      final containerName = typesDb.lookup(containerType);
       if (containerName != null) {
-        locationNames[id] = '$containerName (container)';
+        locationNames[item.locationId] = '$containerName (container)';
       }
     }
   }
