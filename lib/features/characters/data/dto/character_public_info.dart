@@ -6,6 +6,8 @@ class CharacterPublicInfo {
     required this.birthday,
     this.allianceId,
     this.factionId,
+    this.raceId,
+    this.bloodlineId,
     this.title,
   });
 
@@ -15,6 +17,8 @@ class CharacterPublicInfo {
   final DateTime birthday;
   final int? allianceId;
   final int? factionId;
+  final int? raceId;
+  final int? bloodlineId;
   final String? title;
 
   factory CharacterPublicInfo.fromJson(Map<String, dynamic> json) {
@@ -25,6 +29,8 @@ class CharacterPublicInfo {
       birthday: DateTime.parse(json['birthday'] as String),
       allianceId: json['alliance_id'] as int?,
       factionId: json['faction_id'] as int?,
+      raceId: json['race_id'] as int?,
+      bloodlineId: json['bloodline_id'] as int?,
       title: json['title'] as String?,
     );
   }

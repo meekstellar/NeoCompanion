@@ -37,12 +37,26 @@ final marketOrdersProvider =
     if (n != null) typeNames[o.typeId] = n;
   }
 
+  // Most order locations are stations or structures, but a few are
+  // solar systems (citadels in space). Resolve those locally first;
+  // anything left over goes to /universe/names/.
   final locationIds = {for (final o in orders) o.locationId}.toList();
-  var locationNames = <int, String>{};
-  if (locationIds.isNotEmpty) {
+  final locationNames = <int, String>{};
+  final unresolved = <int>[];
+  for (final id in locationIds) {
+    final local = typesDb.lookupSystem(id);
+    if (local != null) {
+      locationNames[id] = local;
+    } else {
+      unresolved.add(id);
+    }
+  }
+  if (unresolved.isNotEmpty) {
     try {
-      final resolved = await character.resolveNames(locationIds);
-      locationNames = {for (final n in resolved) n.id: n.name};
+      final resolved = await character.resolveNames(unresolved);
+      for (final n in resolved) {
+        locationNames[n.id] = n.name;
+      }
     } catch (_) {
       // Player structures keep their raw ID.
     }

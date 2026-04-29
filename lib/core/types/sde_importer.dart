@@ -65,6 +65,7 @@ const _wantedFiles = <String>[
   'factions.jsonl',
   'races.jsonl',
   'bloodlines.jsonl',
+  'npcCorporations.jsonl',
 ];
 
 class SdeImporter {
@@ -198,6 +199,7 @@ class SdeImporter {
       'factions.jsonl': 0.005,
       'races.jsonl': 0.001,
       'bloodlines.jsonl': 0.005,
+      'npcCorporations.jsonl': 0.02,
     };
     var done = 0.0;
     for (final entry in weights.entries) {
@@ -270,6 +272,8 @@ class SdeImporter {
         return _importRaces;
       case 'bloodlines.jsonl':
         return _importBloodlines;
+      case 'npcCorporations.jsonl':
+        return _importNpcCorporations;
     }
     return null;
   }
@@ -720,6 +724,50 @@ Stream<double> _importBloodlines(
     );
   }
   await batch.commit(noResult: true);
+  yield 1.0;
+}
+
+Stream<double> _importNpcCorporations(
+    Database db, Stream<_JsonEntry> entries) async* {
+  const total = 800.0;
+  var processed = 0;
+  Batch batch = db.batch();
+  var queued = 0;
+
+  Future<void> flush() async {
+    if (queued == 0) return;
+    await batch.commit(noResult: true);
+    batch = db.batch();
+    queued = 0;
+  }
+
+  await for (final e in entries) {
+    final m = e.body;
+    batch.insert('npc_corporations', {
+      'id': e.id,
+      'ticker': _asString(m['tickerName']),
+      'ceo_id': _asInt(m['ceoID']),
+      'faction_id': _asInt(m['factionID']),
+      'station_id': _asInt(m['stationID']),
+      'size': _asString(m['size']),
+      'extent': _asString(m['extent']),
+      'tax_rate': _asDouble(m['taxRate']),
+    });
+    queued++;
+    _insertTranslations(
+      batch,
+      table: 'npc_corporation_translations',
+      idColumn: 'corporation_id',
+      id: e.id,
+      names: m['name'],
+      descriptions: m['description'],
+      addedRows: (n) => queued += n,
+    );
+    if (queued >= 1000) await flush();
+    processed++;
+    if (processed % 200 == 0) yield (processed / total).clamp(0.0, 0.99);
+  }
+  await flush();
   yield 1.0;
 }
 

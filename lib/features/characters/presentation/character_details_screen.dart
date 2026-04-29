@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/esi_error_message.dart';
+import '../../../core/types/types_database_providers.dart';
 import '../character_providers.dart';
 
 class CharacterDetailsScreen extends ConsumerWidget {
@@ -12,12 +13,23 @@ class CharacterDetailsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sheet = ref.watch(characterSheetProvider(characterId));
+    final typesDb = ref.watch(typesDatabaseProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Character Sheet')),
       body: sheet.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(describeEsiError(e))),
-        data: (data) => RefreshIndicator(
+        data: (data) {
+          final raceName = data.publicInfo.raceId == null
+              ? null
+              : typesDb.lookupRace(data.publicInfo.raceId!);
+          final bloodlineName = data.publicInfo.bloodlineId == null
+              ? null
+              : typesDb.lookupBloodline(data.publicInfo.bloodlineId!);
+          final factionName = data.publicInfo.factionId == null
+              ? null
+              : typesDb.lookupFaction(data.publicInfo.factionId!);
+          return RefreshIndicator(
           onRefresh: () async =>
               ref.invalidate(characterSheetProvider(characterId)),
           child: ListView(
@@ -43,6 +55,11 @@ class CharacterDetailsScreen extends ConsumerWidget {
                       value: data.nameOf(data.publicInfo.allianceId) ??
                           '#${data.publicInfo.allianceId}',
                     ),
+                  if (raceName != null) _Row(label: 'Race', value: raceName),
+                  if (bloodlineName != null)
+                    _Row(label: 'Bloodline', value: bloodlineName),
+                  if (factionName != null)
+                    _Row(label: 'Faction', value: factionName),
                 ],
               ),
               const SizedBox(height: 16),
@@ -81,7 +98,8 @@ class CharacterDetailsScreen extends ConsumerWidget {
               ),
             ],
           ),
-        ),
+        );
+        },
       ),
     );
   }

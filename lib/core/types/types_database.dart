@@ -34,7 +34,7 @@ class TypesDatabase extends ChangeNotifier {
   /// Schema version of *our* SQLite layout (independent of CCP's SDE
   /// build number). Bumping invalidates cached data and forces a
   /// re-import through the gate.
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
   Database? _db;
 
@@ -48,6 +48,7 @@ class TypesDatabase extends ChangeNotifier {
   Map<int, String> _factionNames = const {};
   Map<int, String> _raceNames = const {};
   Map<int, String> _bloodlineNames = const {};
+  Map<int, String> _npcCorporationNames = const {};
 
   Map<int, int?> _groupCategory = const {};
   Map<int, int?> _typeGroup = const {};
@@ -76,6 +77,7 @@ class TypesDatabase extends ChangeNotifier {
   String? lookupFaction(int id) => _factionNames[id];
   String? lookupRace(int id) => _raceNames[id];
   String? lookupBloodline(int id) => _bloodlineNames[id];
+  String? lookupNpcCorporation(int id) => _npcCorporationNames[id];
 
   Iterable<MapEntry<int, String>> get entries => _typeNames.entries;
 
@@ -158,6 +160,17 @@ class TypesDatabase extends ChangeNotifier {
 
     await _loadMeta(db);
 
+    // Stored schema differs from the code's expected layout (added
+    // tables, dropped columns, …) — pretend the DB is empty so the gate
+    // forces a fresh import instead of crashing on missing tables.
+    final stored = await _readSchemaVersion(db);
+    if (stored != schemaVersion) {
+      _buildNumber = null;
+      _releaseDate = null;
+      _installedAt = null;
+      return;
+    }
+
     _typeNames =
         await _readNameMap(db, 'type_translations', 'type_id');
     _groupNames =
@@ -177,6 +190,8 @@ class TypesDatabase extends ChangeNotifier {
     _raceNames = await _readNameMap(db, 'race_translations', 'race_id');
     _bloodlineNames =
         await _readNameMap(db, 'bloodline_translations', 'bloodline_id');
+    _npcCorporationNames = await _readNameMap(
+        db, 'npc_corporation_translations', 'corporation_id');
 
     final typeRows = await db.query('types', columns: ['id', 'group_id']);
     _typeGroup = {
@@ -223,6 +238,18 @@ class TypesDatabase extends ChangeNotifier {
     _buildNumber = 0;
     _installedAt = DateTime.now();
     notifyListeners();
+  }
+
+  Future<int?> _readSchemaVersion(Database db) async {
+    final rows = await db.query(
+      'meta',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: ['schema_version'],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return int.tryParse(rows.first['value']?.toString() ?? '');
   }
 
   Future<bool> _hasSchema(Database db) async {
@@ -291,6 +318,7 @@ class TypesDatabase extends ChangeNotifier {
     _factionNames = const {};
     _raceNames = const {};
     _bloodlineNames = const {};
+    _npcCorporationNames = const {};
     _groupCategory = const {};
     _typeGroup = const {};
     _buildNumber = null;
@@ -521,6 +549,26 @@ CREATE TABLE bloodline_translations (
   male_description TEXT,
   female_description TEXT,
   PRIMARY KEY (bloodline_id, lang)
+)''');
+
+  await db.execute('''
+CREATE TABLE npc_corporations (
+  id INTEGER PRIMARY KEY,
+  ticker TEXT,
+  ceo_id INTEGER,
+  faction_id INTEGER,
+  station_id INTEGER,
+  size TEXT,
+  extent TEXT,
+  tax_rate REAL
+)''');
+  await db.execute('''
+CREATE TABLE npc_corporation_translations (
+  corporation_id INTEGER NOT NULL,
+  lang TEXT NOT NULL,
+  name TEXT,
+  description TEXT,
+  PRIMARY KEY (corporation_id, lang)
 )''');
 }
 
