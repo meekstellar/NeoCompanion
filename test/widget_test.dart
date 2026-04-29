@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -14,10 +12,8 @@ import 'package:neocompanion/main.dart';
 void main() {
   testWidgets('Empty character list shows the add-character CTA',
       (tester) async {
-    // File doesn't have to exist — TypesDatabase.load() no-ops if absent.
-    final db = TypesDatabase(
-      File('${Directory.systemTemp.path}/neocompanion_test_db.json'),
-    );
+    final db = TypesDatabase(null)
+      ..seedForTesting(typeNames: const {1: 'Test Item'});
 
     await tester.pumpWidget(
       ProviderScope(

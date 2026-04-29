@@ -1,8 +1,6 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../features/characters/character_providers.dart';
-import '../auth/auth_providers.dart';
-import '../network/network_providers.dart';
 import 'types_database.dart';
 import 'types_database_checker.dart';
 import 'types_database_updater.dart';
@@ -13,15 +11,25 @@ final typesDatabaseProvider = Provider<TypesDatabase>((ref) {
   );
 });
 
+/// Bare Dio used by the SDE pipeline. Distinct from [esiClientProvider]
+/// because the SDE archive lives on developers.eveonline.com (not ESI)
+/// and shouldn't carry any auth interceptors.
+final sdeDioProvider = Provider<Dio>((ref) {
+  return Dio(BaseOptions(
+    headers: {'User-Agent': 'NeoCompanion (SDE pipeline)'},
+    receiveTimeout: const Duration(minutes: 5),
+    sendTimeout: const Duration(minutes: 1),
+  ));
+});
+
 final typesDatabaseUpdaterProvider = Provider<TypesDatabaseUpdater>((ref) {
   return TypesDatabaseUpdater(
-    esi: ref.watch(esiClientProvider),
-    character: ref.watch(characterRepositoryProvider),
+    dio: ref.watch(sdeDioProvider),
     database: ref.watch(typesDatabaseProvider),
   );
 });
 
-/// Bumps every time the database is committed. Feature providers that
+/// Bumps every time the database is swapped. Feature providers that
 /// derive state from type names should `ref.watch` this so they rebuild
 /// whenever the user finishes an update.
 class TypesDatabaseRevision extends Notifier<int> {
@@ -41,13 +49,13 @@ final typesDatabaseRevisionProvider =
 final typesDatabaseCheckerProvider = Provider<TypesDatabaseChecker>((ref) {
   return TypesDatabaseChecker(
     database: ref.watch(typesDatabaseProvider),
-    compatibilityDate: ref.watch(appConfigProvider).esiCompatibilityDate,
+    dio: ref.watch(sdeDioProvider),
   );
 });
 
-/// Asks CCP whether the local DB matches their first page of types.
-/// `true` = fresh, `false` = update available, `null` while in flight or
-/// when the probe failed (banner stays hidden on errors).
+/// Asks CCP whether the local SDE build matches the latest published
+/// one. `true` = fresh, `false` = update available, `null` while in
+/// flight or when the probe failed.
 final typesDatabaseFreshnessProvider = FutureProvider<bool?>((ref) async {
   ref.watch(typesDatabaseRevisionProvider);
   final db = ref.watch(typesDatabaseProvider);

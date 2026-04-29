@@ -4,13 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/auth/auth_providers.dart';
 import 'core/config/app_config.dart';
 import 'core/config/flavor.dart';
-import 'dart:io';
-
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'core/notifications/notification_providers.dart';
 import 'core/notifications/notification_service.dart';
-import 'core/types/presentation/item_database_banner.dart';
+import 'core/types/presentation/item_database_gate.dart';
 import 'core/types/types_database.dart';
 import 'core/types/types_database_providers.dart';
 import 'core/ui/offline_banner.dart';
@@ -24,7 +23,9 @@ Future<void> bootstrap(Flavor flavor) async {
   await notifications.initialize();
 
   final docsDir = await getApplicationDocumentsDirectory();
-  final typesDb = TypesDatabase(File('${docsDir.path}/types_db.json'));
+  final dbPath = p.join(docsDir.path, 'sde.db');
+  final sqlite = await openExistingSdeDatabase(dbPath);
+  final typesDb = TypesDatabase(sqlite, path: dbPath);
   await typesDb.load();
 
   runApp(
@@ -57,8 +58,8 @@ class NeoCompanionApp extends ConsumerWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const OfflineBanner(
-        child: ItemDatabaseBanner(
+      home: const ItemDatabaseGate(
+        child: OfflineBanner(
           child: SkillNotificationSyncScope(child: CharacterListScreen()),
         ),
       ),

@@ -1,13 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
-import '../../network/esi_error_message.dart';
 import '../types_database.dart';
 import '../types_database_providers.dart';
-import '../types_database_updater.dart';
 
 class ItemDatabaseScreen extends ConsumerStatefulWidget {
   const ItemDatabaseScreen({super.key});
@@ -18,111 +13,86 @@ class ItemDatabaseScreen extends ConsumerStatefulWidget {
 }
 
 class _ItemDatabaseScreenState extends ConsumerState<ItemDatabaseScreen> {
-  StreamSubscription<TypesDatabaseProgress>? _sub;
-  TypesDatabaseProgress? _progress;
-  String? _error;
-  bool _running = false;
+  static const int _pageSize = 100;
 
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
+  String _query = '';
+  int _visible = _pageSize;
+
+  void _onQueryChanged(String value) {
+    setState(() {
+      _query = value;
+      _visible = _pageSize;
+    });
   }
 
-  void _start() {
-    setState(() {
-      _running = true;
-      _error = null;
-      _progress = null;
-    });
-    final updater = ref.read(typesDatabaseUpdaterProvider);
-    _sub?.cancel();
-    _sub = updater.update().listen(
-      (p) => setState(() => _progress = p),
-      onError: (Object e) => setState(() {
-        _error = describeEsiError(e);
-        _running = false;
-      }),
-      onDone: () => setState(() => _running = false),
+  void _showMore() {
+    setState(() => _visible += _pageSize);
+  }
+
+  Future<void> _confirmReset(BuildContext context, TypesDatabase db) async {
+    final navigator = Navigator.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset database?'),
+        content: const Text(
+          'This deletes the local item database. You will need to '
+          'download it again before using the app.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
     );
+    if (ok != true) return;
+    await db.reset();
+    navigator.pop();
   }
 
   @override
   Widget build(BuildContext context) {
     final db = ref.watch(typesDatabaseProvider);
-    return AnimatedBuilder(
-      animation: db,
-      builder: (context, _) => _buildScaffold(context, db),
-    );
-  }
-
-  Widget _buildScaffold(BuildContext context, TypesDatabase db) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Item database')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      appBar: AppBar(
+        title: const Text('Item database'),
+        actions: [
+          IconButton(
+            tooltip: 'Reset database',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _confirmReset(context, db),
+          ),
+        ],
+      ),
+      body: AnimatedBuilder(
+        animation: db,
+        builder: (context, _) => Column(
           children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'STATUS',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            letterSpacing: 1.2,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      db.isReady
-                          ? '${NumberFormat('#,##0', 'en_US').format(db.count)} '
-                              'types cached'
-                          : 'Database is empty',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      db.lastUpdatedAt == null
-                          ? 'Never updated'
-                          : 'Last updated ${_formatDate(db.lastUpdatedAt!)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: TextField(
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  hintText: 'Search items',
+                  isDense: true,
+                  border: OutlineInputBorder(),
                 ),
+                onChanged: _onQueryChanged,
               ),
             ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _running ? null : _start,
-              icon: const Icon(Icons.cloud_download_outlined),
-              label: Text(db.isReady ? 'Update now' : 'Download now'),
-            ),
-            const SizedBox(height: 16),
-            if (_progress != null) _ProgressBlock(progress: _progress!),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Text(
-                  _error!,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
+            Expanded(
+              child: _ItemList(
+                db: db,
+                query: _query,
+                visible: _visible,
+                onShowMore: _showMore,
               ),
-            const SizedBox(height: 24),
-            Text(
-              'The database powers item names across Market, Fittings, '
-              'Skills and Wallet. Updating takes a minute and '
-              'fires a few hundred ESI requests, so do it on Wi-Fi when '
-              "you can — it's only needed once and after major patches.",
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).hintColor,
-                  ),
             ),
           ],
         ),
@@ -131,31 +101,65 @@ class _ItemDatabaseScreenState extends ConsumerState<ItemDatabaseScreen> {
   }
 }
 
-class _ProgressBlock extends StatelessWidget {
-  const _ProgressBlock({required this.progress});
-  final TypesDatabaseProgress progress;
+class _ItemList extends StatelessWidget {
+  const _ItemList({
+    required this.db,
+    required this.query,
+    required this.visible,
+    required this.onShowMore,
+  });
+
+  final TypesDatabase db;
+  final String query;
+  final int visible;
+  final VoidCallback onShowMore;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '${progress.phase} • ${progress.current} / ${progress.total}',
+    final q = query.trim().toLowerCase();
+    final filtered = q.isEmpty
+        ? db.entries.toList(growable: false)
+        : db.entries
+            .where((e) => e.value.toLowerCase().contains(q))
+            .toList(growable: false);
+    filtered.sort((a, b) => a.value.compareTo(b.value));
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Text(
+          'No matches',
           style: Theme.of(context).textTheme.bodySmall,
         ),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(3),
-          child: LinearProgressIndicator(
-            value: progress.fraction.clamp(0.0, 1.0),
-            minHeight: 6,
+      );
+    }
+
+    final shown = visible.clamp(0, filtered.length);
+    final hasMore = shown < filtered.length;
+
+    return ListView.builder(
+      itemCount: shown + (hasMore ? 1 : 0),
+      itemBuilder: (_, i) {
+        if (i == shown) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: OutlinedButton(
+              onPressed: onShowMore,
+              child: Text(
+                'Show more (${filtered.length - shown} left)',
+              ),
+            ),
+          );
+        }
+        final e = filtered[i];
+        return ListTile(
+          dense: true,
+          title: Text(e.value),
+          trailing: Text(
+            '#${e.key}',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }
-
-String _formatDate(DateTime d) =>
-    DateFormat('MMM d, yyyy HH:mm').format(d.toLocal());

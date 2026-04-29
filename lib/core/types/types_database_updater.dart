@@ -1,94 +1,49 @@
-import 'dart:math' as math;
+import 'dart:io';
 
-import '../../features/characters/data/character_repository.dart';
-import '../network/esi_client.dart';
+import 'package:dio/dio.dart';
+import 'package:path/path.dart' as p;
+
+import 'sde_importer.dart';
 import 'types_database.dart';
 
+/// Single-percentage progress event surfaced to the UI.
 class TypesDatabaseProgress {
-  const TypesDatabaseProgress({
-    required this.phase,
-    required this.current,
-    required this.total,
-  });
+  const TypesDatabaseProgress(this.fraction);
 
-  final String phase;
-  final int current;
-  final int total;
-
-  double get fraction => total == 0 ? 0 : current / total;
+  /// Overall completion 0..1.
+  final double fraction;
 }
 
-/// Walks ESI to populate [TypesDatabase]:
-/// 1. /universe/types/?page=N — collect every type id (paginated)
-/// 2. /universe/names/ in batches of [_chunkSize] — resolve to names
-///
-/// Yields one [TypesDatabaseProgress] per network step so the UI can
-/// render a progress bar with phase labels. The DB is committed in one
-/// shot at the end so partial updates don't replace the previous good
-/// state if the user cancels mid-flight.
+/// Drives a full SDE refresh: downloads the latest archive from CCP,
+/// imports the relevant YAMLs into a sibling SQLite file, and swaps it
+/// over the live one. Emits [TypesDatabaseProgress] for the popup.
 class TypesDatabaseUpdater {
   TypesDatabaseUpdater({
-    required EsiClient esi,
-    required CharacterRepository character,
+    required Dio dio,
     required TypesDatabase database,
-  })  : _esi = esi,
-        _character = character,
+  })  : _importer = SdeImporter(dio: dio),
         _database = database;
 
-  final EsiClient _esi;
-  final CharacterRepository _character;
+  final SdeImporter _importer;
   final TypesDatabase _database;
 
-  static const int _chunkSize = 1000;
-
   Stream<TypesDatabaseProgress> update() async* {
-    final ids = <int>[];
-    var page = 1;
-    var totalPages = 1;
-    String? firstPageEtag;
-    while (true) {
-      final res = await _esi.get<List<dynamic>>(
-        '/universe/types/',
-        queryParameters: {'page': page},
-      );
-      ids.addAll(res.data!.cast<int>());
-      totalPages = int.tryParse(res.headers.value('x-pages') ?? '1') ?? 1;
-      if (page == 1) firstPageEtag = res.headers.value('etag');
-      yield TypesDatabaseProgress(
-        phase: 'Fetching type IDs',
-        current: page,
-        total: totalPages,
-      );
-      if (page >= totalPages) break;
-      page++;
+    final dbPath = _database.path;
+    if (dbPath == null) {
+      throw StateError(
+          'TypesDatabase has no backing file; cannot import SDE in tests');
+    }
+    final workDir = p.join(p.dirname(dbPath), 'sde_work');
+    await Directory(workDir).create(recursive: true);
+
+    await for (final progress in _importer.run(
+      workDir: workDir,
+      currentDbPath: dbPath,
+    )) {
+      yield TypesDatabaseProgress(progress.overall);
     }
 
-    final chunkCount = (ids.length / _chunkSize).ceil();
-    final names = <int, String>{};
-    for (var i = 0; i < chunkCount; i++) {
-      final start = i * _chunkSize;
-      final end = math.min(start + _chunkSize, ids.length);
-      final chunk = ids.sublist(start, end);
-      final resolved = await _character.resolveNames(chunk);
-      for (final n in resolved) {
-        names[n.id] = n.name;
-      }
-      yield TypesDatabaseProgress(
-        phase: 'Resolving names',
-        current: i + 1,
-        total: chunkCount,
-      );
-    }
-
-    await _database.commit(
-      names: names,
-      firstPageEtag: firstPageEtag,
-      pageCount: totalPages,
-    );
-    yield TypesDatabaseProgress(
-      phase: 'Done',
-      current: chunkCount,
-      total: chunkCount,
-    );
+    await _database.swapTo('$dbPath.new');
+    yield const TypesDatabaseProgress(1);
   }
 }
