@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/auth/auth_providers.dart';
+import '../../../core/auth/scope_compatibility.dart';
+import '../../../core/auth/sso_scopes.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../skills/presentation/skill_queue_screen.dart';
 import '../../wallet/presentation/wallet_journal_screen.dart';
@@ -46,6 +49,7 @@ class CharacterSheetScreen extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              _ScopeUpgradeBanner(characterId: characterId),
               _Header(data: data),
               const SizedBox(height: 24),
               _Section(
@@ -292,5 +296,75 @@ class _ErrorState extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _ScopeUpgradeBanner extends ConsumerWidget {
+  const _ScopeUpgradeBanner({required this.characterId});
+  final int characterId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(storedCharactersProvider).value ?? const [];
+    final token = tokens.where((t) => t.characterId == characterId).firstOrNull;
+    if (token == null) return const SizedBox.shrink();
+
+    final missing = missingScopes(
+      have: token.scopes,
+      required: eveMvpScopes,
+    );
+    if (missing.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.lock_open_outlined, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Re-authorize to enable new features',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${missing.length} new scope${missing.length == 1 ? '' : 's'} '
+            'needed since you last signed in.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonal(
+              onPressed: () => _reauthorize(context, ref),
+              child: const Text('Re-authorize'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _reauthorize(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(eveSsoServiceProvider).signIn();
+      ref.invalidate(storedCharactersProvider);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(describeEsiError(e))),
+      );
+    }
   }
 }
