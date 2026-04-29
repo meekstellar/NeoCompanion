@@ -1,17 +1,30 @@
 # neocom
 
-EVE Online companion app
+Unofficial EVE Online companion app for iOS and Android. Built with Flutter against the current ESI.
 
-## Getting Started
+## Flavors
 
-This project is a starting point for a Flutter application.
+Two entry points share a single bootstrap:
 
-A few resources to get you started if this is your first Flutter project:
+- `lib/main_dev.dart` — development flavor
+- `lib/main_prod.dart` — production flavor
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Configuration is injected at build time via `--dart-define` (no secrets in the repo):
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+| Variable | Required | Notes |
+|---|---|---|
+| `EVE_CLIENT_ID_DEV` | dev only | Client ID from developers.eveonline.com |
+| `EVE_CLIENT_ID_PROD` | prod only | Client ID from developers.eveonline.com |
+| `EVE_CALLBACK_SCHEME` | optional | Defaults to `eveauth-neocom` |
+| `ESI_COMPATIBILITY_DATE` | optional | Pinned ESI compatibility date |
+| `SENTRY_DSN` | optional | Crash reporting |
+
+## Run
+
+```bash
+flutter run -t lib/main_dev.dart \
+  --dart-define=EVE_CLIENT_ID_DEV=<your-client-id>
+
+flutter run -t lib/main_prod.dart --release \
+  --dart-define=EVE_CLIENT_ID_PROD=<your-client-id>
+```
