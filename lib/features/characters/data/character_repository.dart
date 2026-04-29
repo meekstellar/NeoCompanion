@@ -1,3 +1,7 @@
+import 'dart:math' as math;
+
+import 'package:dio/dio.dart';
+
 import '../../../core/network/esi_client.dart';
 import 'dto/character_location.dart';
 import 'dto/character_portrait.dart';
@@ -46,15 +50,37 @@ class CharacterRepository {
     return res.data!.toDouble();
   }
 
-  /// Batch-resolves up to 1000 IDs of characters/corps/alliances/types/systems
-  /// to their human-readable names. Public endpoint, no auth needed.
+  /// Batch-resolves IDs of characters/corps/alliances/types/systems to
+  /// human-readable names. Splits into chunks of 1000 (the ESI hard cap)
+  /// and bisects any chunk that comes back as an error so a single bad
+  /// id (typically a player-owned structure) doesn't poison the rest.
   Future<List<UniverseName>> resolveNames(List<int> ids) async {
     if (ids.isEmpty) return const [];
-    final res = await _esi.post<List<dynamic>>('/universe/names/', data: ids);
-    return res.data!
-        .cast<Map<String, dynamic>>()
-        .map(UniverseName.fromJson)
-        .toList();
+    final result = <UniverseName>[];
+    const maxBatch = 1000;
+    for (var i = 0; i < ids.length; i += maxBatch) {
+      final chunk = ids.sublist(i, math.min(i + maxBatch, ids.length));
+      await _resolveChunk(chunk, result);
+    }
+    return result;
+  }
+
+  Future<void> _resolveChunk(List<int> ids, List<UniverseName> out) async {
+    if (ids.isEmpty) return;
+    try {
+      final res = await _esi.post<List<dynamic>>('/universe/names/', data: ids);
+      out.addAll(
+        res.data!.cast<Map<String, dynamic>>().map(UniverseName.fromJson),
+      );
+    } on DioException {
+      if (ids.length == 1) {
+        // Single id rejected — drop it silently, the UI will show #id.
+        return;
+      }
+      final mid = ids.length ~/ 2;
+      await _resolveChunk(ids.sublist(0, mid), out);
+      await _resolveChunk(ids.sublist(mid), out);
+    }
   }
 
   /// Reverse of [resolveNames]: maps human-readable names to type/system/etc
