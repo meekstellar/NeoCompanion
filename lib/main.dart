@@ -12,19 +12,19 @@ Future<void> bootstrap(Flavor flavor) async {
   runApp(
     ProviderScope(
       overrides: [appConfigProvider.overrideWithValue(config)],
-      child: const NeocomApp(),
+      child: const NeoCompanionApp(),
     ),
   );
 }
 
-class NeocomApp extends ConsumerWidget {
-  const NeocomApp({super.key});
+class NeoCompanionApp extends ConsumerWidget {
+  const NeoCompanionApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(appConfigProvider);
     return MaterialApp(
-      title: config.isDev ? 'Neocom (dev)' : 'Neocom',
+      title: config.isDev ? 'NeoCompanion (dev)' : 'NeoCompanion',
       debugShowCheckedModeBanner: config.isDev,
       themeMode: ThemeMode.dark,
       darkTheme: ThemeData(

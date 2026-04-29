@@ -1,4 +1,4 @@
-package com.meekstellar.neocom
+package com.meekstellar.neocompanion
 
 import io.flutter.embedding.android.FlutterActivity
 

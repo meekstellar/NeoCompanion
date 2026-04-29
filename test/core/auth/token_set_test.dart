@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:neocom/core/auth/token_set.dart';
+import 'package:neocompanion/core/auth/token_set.dart';
 
 void main() {
   TokenSet sample({DateTime? expiresAt}) => TokenSet(

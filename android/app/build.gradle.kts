@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.meekstellar.neocom"
+    namespace = "com.meekstellar.neocompanion"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -21,13 +21,13 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.meekstellar.neocom"
+        applicationId = "com.meekstellar.neocompanion"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        manifestPlaceholders["appAuthRedirectScheme"] = "eveauth-neocom"
+        manifestPlaceholders["appAuthRedirectScheme"] = "eveauth-neocompanion"
     }
 
     buildTypes {

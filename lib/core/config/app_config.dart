@@ -20,7 +20,7 @@ class AppConfig {
     const prodClientId = String.fromEnvironment('EVE_CLIENT_ID_PROD');
     const callbackScheme = String.fromEnvironment(
       'EVE_CALLBACK_SCHEME',
-      defaultValue: 'eveauth-neocom',
+      defaultValue: 'eveauth-neocompanion',
     );
     const compatibilityDate = String.fromEnvironment(
       'ESI_COMPATIBILITY_DATE',

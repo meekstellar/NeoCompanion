@@ -1,4 +1,4 @@
-# neocom
+# neocompanion
 
 Unofficial EVE Online companion app for iOS and Android. Built with Flutter against the current ESI.
 
@@ -15,7 +15,7 @@ Configuration is injected at build time via `--dart-define` (no secrets in the r
 |---|---|---|
 | `EVE_CLIENT_ID_DEV` | dev only | Client ID from developers.eveonline.com |
 | `EVE_CLIENT_ID_PROD` | prod only | Client ID from developers.eveonline.com |
-| `EVE_CALLBACK_SCHEME` | optional | Defaults to `eveauth-neocom` |
+| `EVE_CALLBACK_SCHEME` | optional | Defaults to `eveauth-neocompanion` |
 | `ESI_COMPATIBILITY_DATE` | optional | Pinned ESI compatibility date |
 | `SENTRY_DSN` | optional | Crash reporting |
 

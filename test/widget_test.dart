@@ -1,11 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:neocom/core/auth/auth_providers.dart';
-import 'package:neocom/core/auth/token_set.dart';
-import 'package:neocom/core/config/app_config.dart';
-import 'package:neocom/core/config/flavor.dart';
-import 'package:neocom/main.dart';
+import 'package:neocompanion/core/auth/auth_providers.dart';
+import 'package:neocompanion/core/auth/token_set.dart';
+import 'package:neocompanion/core/config/app_config.dart';
+import 'package:neocompanion/core/config/flavor.dart';
+import 'package:neocompanion/main.dart';
 
 void main() {
   testWidgets('Empty character list shows the add-character CTA',
@@ -17,7 +17,7 @@ void main() {
           storedCharactersProvider
               .overrideWith((ref) => Future.value(<TokenSet>[])),
         ],
-        child: const NeocomApp(),
+        child: const NeoCompanionApp(),
       ),
     );
     await tester.pumpAndSettle();

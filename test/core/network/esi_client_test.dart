@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:neocom/core/network/esi_client.dart';
+import 'package:neocompanion/core/network/esi_client.dart';
 
 import 'fake_adapter.dart';
 
@@ -29,7 +29,7 @@ void main() {
     expect(res.statusCode, 200);
     final req = adapter.requests.single;
     expect(req.headers['Authorization'], 'Bearer access-1');
-    expect(req.headers['User-Agent'], contains('Neocom'));
+    expect(req.headers['User-Agent'], contains('NeoCompanion'));
     expect(req.headers['X-Compatibility-Date'], '2026-04-29');
   });
 
