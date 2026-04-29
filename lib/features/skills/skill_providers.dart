@@ -22,6 +22,34 @@ class SkillQueueData {
   final Map<int, String> skillNames;
 }
 
+class AllSkillsData {
+  const AllSkillsData({required this.skills, required this.names});
+
+  final CharacterSkills skills;
+  final Map<int, String> names;
+}
+
+final allSkillsProvider =
+    FutureProvider.family<AllSkillsData, int>((ref, characterId) async {
+  final skillRepo = ref.watch(skillRepositoryProvider);
+  final character = ref.watch(characterRepositoryProvider);
+
+  final skills = await skillRepo.fetchSkills(characterId);
+  final ids = skills.skills.map((s) => s.skillId).toSet().toList();
+
+  var names = <int, String>{};
+  if (ids.isNotEmpty) {
+    try {
+      final resolved = await character.resolveNames(ids);
+      names = {for (final n in resolved) n.id: n.name};
+    } catch (_) {
+      // Fall back to raw IDs in the UI.
+    }
+  }
+
+  return AllSkillsData(skills: skills, names: names);
+});
+
 final skillQueueProvider =
     FutureProvider.family<SkillQueueData, int>((ref, characterId) async {
   final skills = ref.watch(skillRepositoryProvider);

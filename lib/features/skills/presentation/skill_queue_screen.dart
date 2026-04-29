@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../domain/skill_queue_calculator.dart';
 import '../skill_providers.dart';
+import 'all_skills_screen.dart';
 
 class SkillQueueScreen extends ConsumerStatefulWidget {
   const SkillQueueScreen({super.key, required this.characterId});
@@ -39,7 +40,21 @@ class _SkillQueueScreenState extends ConsumerState<SkillQueueScreen> {
   Widget build(BuildContext context) {
     final async = ref.watch(skillQueueProvider(widget.characterId));
     return Scaffold(
-      appBar: AppBar(title: const Text('Skill Queue')),
+      appBar: AppBar(
+        title: const Text('Skill Queue'),
+        actions: [
+          IconButton(
+            tooltip: 'All skills',
+            icon: const Icon(Icons.list),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    AllSkillsScreen(characterId: widget.characterId),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _ErrorState(
