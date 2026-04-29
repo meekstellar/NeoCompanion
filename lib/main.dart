@@ -4,8 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/auth/auth_providers.dart';
 import 'core/config/app_config.dart';
 import 'core/config/flavor.dart';
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
+
 import 'core/notifications/notification_providers.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/types/presentation/item_database_banner.dart';
+import 'core/types/types_database.dart';
+import 'core/types/types_database_providers.dart';
 import 'core/ui/offline_banner.dart';
 import 'features/characters/presentation/character_list_screen.dart';
 import 'features/skills/skill_notification_sync_scope.dart';
@@ -15,11 +22,17 @@ Future<void> bootstrap(Flavor flavor) async {
   final config = AppConfig.forFlavor(flavor);
   final notifications = NotificationService();
   await notifications.initialize();
+
+  final docsDir = await getApplicationDocumentsDirectory();
+  final typesDb = TypesDatabase(File('${docsDir.path}/types_db.json'));
+  await typesDb.load();
+
   runApp(
     ProviderScope(
       overrides: [
         appConfigProvider.overrideWithValue(config),
         notificationServiceProvider.overrideWithValue(notifications),
+        typesDatabaseProvider.overrideWithValue(typesDb),
       ],
       child: const NeoCompanionApp(),
     ),
@@ -45,7 +58,9 @@ class NeoCompanionApp extends ConsumerWidget {
         ),
       ),
       home: const OfflineBanner(
-        child: SkillNotificationSyncScope(child: CharacterListScreen()),
+        child: ItemDatabaseBanner(
+          child: SkillNotificationSyncScope(child: CharacterListScreen()),
+        ),
       ),
     );
   }

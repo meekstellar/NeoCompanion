@@ -7,6 +7,7 @@ import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/token_set.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../../core/notifications/notification_providers.dart';
+import '../../../core/types/presentation/item_database_screen.dart';
 import 'character_sheet_screen.dart';
 
 class CharacterListScreen extends ConsumerWidget {
@@ -18,7 +19,20 @@ class CharacterListScreen extends ConsumerWidget {
     final activeId = ref.watch(activeCharacterIdProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Characters')),
+      appBar: AppBar(
+        title: const Text('Characters'),
+        actions: [
+          IconButton(
+            tooltip: 'Item database',
+            icon: const Icon(Icons.storage_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ItemDatabaseScreen(),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: characters.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(describeEsiError(e))),
