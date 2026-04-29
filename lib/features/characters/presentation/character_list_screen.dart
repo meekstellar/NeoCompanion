@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/token_set.dart';
+import '../../../core/network/esi_error_message.dart';
 import '../../../core/notifications/notification_providers.dart';
 import 'character_sheet_screen.dart';
 
@@ -20,7 +21,7 @@ class CharacterListScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Characters')),
       body: characters.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load: $e')),
+        error: (e, _) => Center(child: Text(describeEsiError(e))),
         data: (list) {
           if (list.isEmpty) {
             return const _EmptyState();

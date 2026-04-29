@@ -6,6 +6,7 @@ import 'core/config/app_config.dart';
 import 'core/config/flavor.dart';
 import 'core/notifications/notification_providers.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/ui/offline_banner.dart';
 import 'features/characters/presentation/character_list_screen.dart';
 import 'features/skills/skill_notification_sync_scope.dart';
 
@@ -43,7 +44,9 @@ class NeoCompanionApp extends ConsumerWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const SkillNotificationSyncScope(child: CharacterListScreen()),
+      home: const OfflineBanner(
+        child: SkillNotificationSyncScope(child: CharacterListScreen()),
+      ),
     );
   }
 }

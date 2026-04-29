@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/network/esi_error_message.dart';
 import '../data/dto/character_skills.dart';
 import '../skill_providers.dart';
 
@@ -30,7 +31,7 @@ class _AllSkillsScreenState extends ConsumerState<AllSkillsScreen> {
       appBar: AppBar(title: const Text('All skills')),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => Center(child: Text(describeEsiError(e))),
         data: _build,
       ),
     );
