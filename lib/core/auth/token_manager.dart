@@ -63,6 +63,19 @@ class TokenManager {
     return refreshed.accessToken;
   }
 
+  /// Refresh regardless of local expiry (e.g. when ESI returned 401 even
+  /// though our clock thinks the token is still valid). Persists and
+  /// returns the new access token.
+  Future<String> forceRefresh(int characterId) async {
+    final tokens = await read(characterId);
+    if (tokens == null) {
+      throw StateError('No tokens for character $characterId');
+    }
+    final refreshed = await _refresh(tokens);
+    await store(refreshed);
+    return refreshed.accessToken;
+  }
+
   Future<TokenSet> _refresh(TokenSet tokens) async {
     final meta = await _endpoints.metadata();
     final res = await _dio.postUri<Map<String, dynamic>>(
