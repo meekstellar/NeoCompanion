@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
 
 import '../auth/token_manager.dart';
+import 'cache_interceptor.dart';
 import 'error_limit_interceptor.dart';
+import 'esi_cache.dart';
 import 'esi_constants.dart';
 import 'refresh_retry_interceptor.dart';
 
@@ -13,12 +15,14 @@ class EsiClient {
     required TokenManager tokens,
     required String compatibilityDate,
     Dio? dio,
+    EsiCache? cache,
     Sleeper sleeper = _defaultSleep,
   }) : this.fromCallbacks(
           getValidAccessToken: tokens.getValidAccessToken,
           forceRefresh: tokens.forceRefresh,
           compatibilityDate: compatibilityDate,
           dio: dio,
+          cache: cache,
           sleeper: sleeper,
         );
 
@@ -27,6 +31,7 @@ class EsiClient {
     required Future<String> Function(int) forceRefresh,
     required String compatibilityDate,
     Dio? dio,
+    EsiCache? cache,
     Sleeper sleeper = _defaultSleep,
   }) : _dio = dio ?? Dio() {
     _dio.options
@@ -34,6 +39,8 @@ class EsiClient {
       ..headers[Headers.acceptHeader] = 'application/json'
       ..headers['User-Agent'] = esiUserAgent
       ..headers['X-Compatibility-Date'] = compatibilityDate;
+    // Cache must be first: a fresh hit short-circuits before auth runs.
+    _dio.interceptors.add(CacheInterceptor(cache ?? EsiCache()));
     _dio.interceptors.add(_AuthInterceptor(getValidAccessToken));
     _dio.interceptors
         .add(RefreshRetryInterceptor(dio: _dio, forceRefresh: forceRefresh));
