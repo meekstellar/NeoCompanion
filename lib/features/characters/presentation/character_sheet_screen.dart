@@ -9,6 +9,7 @@ import '../../../core/auth/sso_scopes.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../assets/presentation/assets_screen.dart';
 import '../../fittings/presentation/fittings_screen.dart';
+import '../../market/presentation/market_orders_screen.dart';
 import '../../skills/presentation/skill_queue_screen.dart';
 import '../../wallet/presentation/wallet_journal_screen.dart';
 import '../character_providers.dart';
@@ -28,6 +29,15 @@ class CharacterSheetScreen extends ConsumerWidget {
           orElse: () => const Text('Character'),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Market orders',
+            icon: const Icon(Icons.show_chart),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => MarketOrdersScreen(characterId: characterId),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'Assets',
             icon: const Icon(Icons.inventory_2_outlined),
