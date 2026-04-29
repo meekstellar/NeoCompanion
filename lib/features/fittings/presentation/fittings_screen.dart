@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../data/dto/fitting.dart';
 import '../fitting_providers.dart';
+import 'eft_import_screen.dart';
 import 'fitting_detail_screen.dart';
 
 class FittingsScreen extends ConsumerWidget {
@@ -15,7 +16,20 @@ class FittingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(fittingsProvider(characterId));
     return Scaffold(
-      appBar: AppBar(title: const Text('Fittings')),
+      appBar: AppBar(
+        title: const Text('Fittings'),
+        actions: [
+          IconButton(
+            tooltip: 'Import from EFT',
+            icon: const Icon(Icons.content_paste_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => EftImportScreen(characterId: characterId),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(

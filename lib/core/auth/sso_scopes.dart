@@ -8,4 +8,5 @@ const eveMvpScopes = <String>[
   'esi-location.read_ship_type.v1',
   'esi-clones.read_implants.v1',
   'esi-fittings.read_fittings.v1',
+  'esi-fittings.write_fittings.v1',
 ];

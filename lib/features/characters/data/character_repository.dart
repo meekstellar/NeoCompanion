@@ -56,4 +56,26 @@ class CharacterRepository {
         .map(UniverseName.fromJson)
         .toList();
   }
+
+  /// Reverse of [resolveNames]: maps human-readable names to type/system/etc
+  /// IDs via /universe/ids/. Returns a flat name → id map covering all
+  /// matched categories. Names that don't resolve are simply absent.
+  Future<Map<String, int>> resolveIds(List<String> names) async {
+    if (names.isEmpty) return const {};
+    final res = await _esi.post<Map<String, dynamic>>(
+      '/universe/ids/',
+      data: names,
+    );
+    final result = <String, int>{};
+    for (final category in res.data!.values) {
+      if (category is List) {
+        for (final entry in category) {
+          if (entry is Map<String, dynamic>) {
+            result[entry['name'] as String] = (entry['id'] as num).toInt();
+          }
+        }
+      }
+    }
+    return result;
+  }
 }
