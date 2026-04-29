@@ -7,12 +7,14 @@ import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/scope_compatibility.dart';
 import '../../../core/auth/sso_scopes.dart';
 import '../../../core/network/esi_error_message.dart';
+import '../../../core/types/presentation/item_database_screen.dart';
 import '../../assets/presentation/assets_screen.dart';
 import '../../fittings/presentation/fittings_screen.dart';
 import '../../market/presentation/market_orders_screen.dart';
 import '../../skills/presentation/skill_queue_screen.dart';
 import '../../wallet/presentation/wallet_journal_screen.dart';
 import '../character_providers.dart';
+import 'character_details_screen.dart';
 
 class CharacterSheetScreen extends ConsumerWidget {
   const CharacterSheetScreen({super.key, required this.characterId});
@@ -29,41 +31,9 @@ class CharacterSheetScreen extends ConsumerWidget {
           orElse: () => const Text('Character'),
         ),
         actions: [
-          IconButton(
-            tooltip: 'Market orders',
-            icon: const Icon(Icons.show_chart),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => MarketOrdersScreen(characterId: characterId),
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Assets',
-            icon: const Icon(Icons.inventory_2_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => AssetsScreen(characterId: characterId),
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Fittings',
-            icon: const Icon(Icons.layers_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => FittingsScreen(characterId: characterId),
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Skill queue',
-            icon: const Icon(Icons.school_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => SkillQueueScreen(characterId: characterId),
-              ),
-            ),
+          TextButton(
+            onPressed: () => _logout(context, ref),
+            child: const Text('Logout'),
           ),
         ],
       ),
@@ -80,81 +50,87 @@ class CharacterSheetScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             children: [
               _ScopeUpgradeBanner(characterId: characterId),
-              _Header(data: data),
+              _HeaderCard(data: data),
               const SizedBox(height: 24),
-              _Section(
-                title: 'Location',
+              const _SectionHeader('Character'),
+              _MenuCard(
                 rows: [
-                  _Row(
-                    label: 'System',
-                    value: data.nameOf(data.location.solarSystemId) ??
-                        '#${data.location.solarSystemId}',
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/Biography.png',
+                    title: 'Character Sheet',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            CharacterDetailsScreen(characterId: characterId),
+                      ),
+                    ),
                   ),
-                  if (data.location.stationId != null)
-                    _Row(
-                      label: 'Station',
-                      value: data.nameOf(data.location.stationId) ??
-                          '#${data.location.stationId}',
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/SkillQueue.png',
+                    title: 'Skill Queue',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            SkillQueueScreen(characterId: characterId),
+                      ),
                     ),
-                  if (data.location.structureId != null)
-                    _Row(
-                      label: 'Structure',
-                      value: '#${data.location.structureId}',
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/Wallet.png',
+                    title: 'Wealth',
+                    subtitle: '${_formatIsk(data.walletBalance)} ISK',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            WalletJournalScreen(characterId: characterId),
+                      ),
                     ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/Assets.png',
+                    title: 'Assets',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AssetsScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/Fitting.png',
+                    title: 'Fittings',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            FittingsScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/MarketOrders.png',
+                    title: 'Market Orders',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            MarketOrdersScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-              _Section(
-                title: 'Ship',
+              const SizedBox(height: 24),
+              const _SectionHeader('Database'),
+              _MenuCard(
                 rows: [
-                  _Row(label: 'Name', value: data.ship.shipName),
-                  _Row(
-                    label: 'Type',
-                    value: data.nameOf(data.ship.shipTypeId) ??
-                        '#${data.ship.shipTypeId}',
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/Inventory.png',
+                    title: 'Item Database',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ItemDatabaseScreen(),
+                      ),
+                    ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: InkWell(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          WalletJournalScreen(characterId: characterId),
-                    ),
-                  ),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              'WALLET',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    letterSpacing: 1.2,
-                                    color: Theme.of(context).colorScheme.primary,
-                                  ),
-                            ),
-                            const Spacer(),
-                            const Icon(Icons.chevron_right, size: 18),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        _Row(
-                          label: 'Balance',
-                          value: _formatIsk(data.walletBalance),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ),
             ],
           ),
@@ -162,111 +138,78 @@ class CharacterSheetScreen extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _logout(BuildContext context, WidgetRef ref) async {
+    final navigator = Navigator.of(context);
+    final tm = ref.read(tokenManagerProvider);
+    await tm.remove(characterId);
+    if (ref.read(activeCharacterIdProvider) == characterId) {
+      ref.read(activeCharacterIdProvider.notifier).set(null);
+    }
+    ref.invalidate(storedCharactersProvider);
+    navigator.pop();
+  }
 }
 
 String _formatIsk(double balance) {
-  final formatter = NumberFormat('#,##0.00', 'en_US');
-  return '${formatter.format(balance)} ISK';
+  return NumberFormat('#,##0.00', 'en_US').format(balance);
 }
 
-class _Header extends StatelessWidget {
-  const _Header({required this.data});
+class _HeaderCard extends StatelessWidget {
+  const _HeaderCard({required this.data});
   final CharacterSheetData data;
 
   @override
   Widget build(BuildContext context) {
-    final secStatus = data.publicInfo.securityStatus;
-    final secColor = secStatus < 0
-        ? Colors.redAccent
-        : secStatus < 0.5
-            ? Colors.amber
-            : Colors.greenAccent;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: CachedNetworkImage(
-            imageUrl: data.portrait.px256,
-            width: 96,
-            height: 96,
-            placeholder: (_, _) => const SizedBox(
-              width: 96,
-              height: 96,
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            ),
-            errorWidget: (_, _, _) => const SizedBox(
-              width: 96,
-              height: 96,
-              child: Icon(Icons.person, size: 48),
-            ),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                data.publicInfo.name,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                data.nameOf(data.publicInfo.corporationId) ??
-                    'Corp #${data.publicInfo.corporationId}',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              if (data.publicInfo.allianceId != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  data.nameOf(data.publicInfo.allianceId) ??
-                      'Alliance #${data.publicInfo.allianceId}',
-                  style: Theme.of(context).textTheme.bodySmall,
+    final corpName = data.nameOf(data.publicInfo.corporationId) ??
+        'Corp #${data.publicInfo.corporationId}';
+    final allianceName = data.publicInfo.allianceId == null
+        ? null
+        : data.nameOf(data.publicInfo.allianceId) ??
+            'Alliance #${data.publicInfo.allianceId}';
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: CachedNetworkImage(
+                imageUrl: data.portrait.px128,
+                width: 64,
+                height: 64,
+                placeholder: (_, _) => const SizedBox(width: 64, height: 64),
+                errorWidget: (_, _, _) => const SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: Icon(Icons.person, size: 32),
                 ),
-              ],
-              const SizedBox(height: 8),
-              Row(
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.shield_outlined, size: 16, color: secColor),
-                  const SizedBox(width: 4),
-                  Text(
-                    secStatus.toStringAsFixed(2),
-                    style: TextStyle(color: secColor, fontWeight: FontWeight.w600),
+                  _LogoLine(
+                    imageUrl:
+                        'https://images.evetech.net/corporations/${data.publicInfo.corporationId}/logo?size=32',
+                    label: corpName,
                   ),
+                  if (allianceName != null) ...[
+                    const SizedBox(height: 6),
+                    _LogoLine(
+                      imageUrl:
+                          'https://images.evetech.net/alliances/${data.publicInfo.allianceId}/logo?size=32',
+                      label: allianceName,
+                    ),
+                  ],
                 ],
               ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.rows});
-  final String title;
-  final List<_Row> rows;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title.toUpperCase(),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.2,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
             ),
-            const SizedBox(height: 8),
-            ...rows,
           ],
         ),
       ),
@@ -274,32 +217,101 @@ class _Section extends StatelessWidget {
   }
 }
 
-class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.value});
+class _LogoLine extends StatelessWidget {
+  const _LogoLine({required this.imageUrl, required this.label});
+  final String imageUrl;
   final String label;
-  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        CachedNetworkImage(
+          imageUrl: imageUrl,
+          width: 18,
+          height: 18,
+          placeholder: (_, _) => const SizedBox(width: 18, height: 18),
+          errorWidget: (_, _, _) => const SizedBox(width: 18, height: 18),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodyMedium,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.title);
+  final String title;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(
-              label,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Theme.of(context).hintColor),
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      child: Text(
+        title.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              letterSpacing: 1.4,
+              color: Theme.of(context).hintColor,
             ),
-          ),
-          Expanded(
-            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
-          ),
-        ],
       ),
+    );
+  }
+}
+
+class _MenuCard extends StatelessWidget {
+  const _MenuCard({required this.rows});
+  final List<_MenuRow> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final children = <Widget>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (i > 0) {
+        children.add(const Divider(height: 1, indent: 56));
+      }
+      children.add(rows[i]);
+    }
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
+      child: Column(children: children),
+    );
+  }
+}
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({
+    required this.iconAsset,
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+  });
+
+  final String iconAsset;
+  final String title;
+  final String? subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: onTap,
+      leading: Image.asset(
+        iconAsset,
+        width: 28,
+        height: 28,
+        color: Theme.of(context).iconTheme.color,
+      ),
+      title: Text(title),
+      subtitle: subtitle == null ? null : Text(subtitle!),
+      trailing: const Icon(Icons.chevron_right, size: 20),
     );
   }
 }
