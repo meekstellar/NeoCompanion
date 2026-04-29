@@ -1,15 +1,18 @@
 /// One cached HTTP response: body, the ETag if the server provided one,
-/// and the moment after which we must revalidate.
+/// the moment after which we must revalidate, and the response headers
+/// (so paginated endpoints replaying from cache still see `x-pages`).
 class CachedResponse {
   CachedResponse({
     required this.body,
     required this.expiresAt,
     this.etag,
+    this.headers = const {},
   });
 
   final Object? body;
   final DateTime expiresAt;
   final String? etag;
+  final Map<String, List<String>> headers;
 
   bool get isExpired => !DateTime.now().isBefore(expiresAt);
 }

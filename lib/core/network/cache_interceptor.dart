@@ -55,6 +55,7 @@ class CacheInterceptor extends Interceptor {
           body: response.data,
           expiresAt: _parseExpires(response.headers.value('expires')),
           etag: response.headers.value('etag'),
+          headers: _captureHeaders(response.headers),
         ),
       );
     }
@@ -69,10 +70,14 @@ class CacheInterceptor extends Interceptor {
     if (response?.statusCode == 304 && cachedBody != null) {
       final etag = response!.headers.value('etag') ??
           options.extra[_cachedEtagKey] as String?;
+      // 304 keeps the previously-cached headers (incl. x-pages); we
+      // only refresh expiry/etag from the new response.
+      final previous = _cache.get(_cacheKey(options));
       final entry = CachedResponse(
         body: cachedBody,
         expiresAt: _parseExpires(response.headers.value('expires')),
         etag: etag,
+        headers: previous?.headers ?? const {},
       );
       _cache.put(_cacheKey(options), entry);
       handler.resolve(_responseFromCache(options, entry));
@@ -97,8 +102,27 @@ class CacheInterceptor extends Interceptor {
       requestOptions: options,
       statusCode: 200,
       data: entry.body,
+      headers: Headers.fromMap(entry.headers),
       extra: {'fromCache': true},
     );
+  }
+
+  /// Stash only the response headers we may need to replay; full
+  /// header maps would balloon the in-memory cache.
+  static const _replayHeaders = <String>{
+    'x-pages',
+    'expires',
+    'etag',
+    'last-modified',
+  };
+
+  Map<String, List<String>> _captureHeaders(Headers headers) {
+    final out = <String, List<String>>{};
+    for (final name in _replayHeaders) {
+      final values = headers[name];
+      if (values != null && values.isNotEmpty) out[name] = List.of(values);
+    }
+    return out;
   }
 
   DateTime _parseExpires(String? raw) {
