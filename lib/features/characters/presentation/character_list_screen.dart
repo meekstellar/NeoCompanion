@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/token_set.dart';
+import 'character_sheet_screen.dart';
 
 class CharacterListScreen extends ConsumerWidget {
   const CharacterListScreen({super.key});
@@ -29,9 +30,17 @@ class CharacterListScreen extends ConsumerWidget {
               return _CharacterTile(
                 token: t,
                 isActive: t.characterId == activeId,
-                onSelect: () => ref
-                    .read(activeCharacterIdProvider.notifier)
-                    .set(t.characterId),
+                onSelect: () {
+                  ref
+                      .read(activeCharacterIdProvider.notifier)
+                      .set(t.characterId);
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          CharacterSheetScreen(characterId: t.characterId),
+                    ),
+                  );
+                },
                 onSignOut: () async {
                   final tm = ref.read(tokenManagerProvider);
                   await tm.remove(t.characterId);
