@@ -1,21 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/auth/auth_providers.dart';
 import 'core/config/app_config.dart';
 import 'core/config/flavor.dart';
+import 'features/characters/presentation/character_list_screen.dart';
 
 Future<void> bootstrap(Flavor flavor) async {
   WidgetsFlutterBinding.ensureInitialized();
   final config = AppConfig.forFlavor(flavor);
-  runApp(NeocomApp(config: config));
+  runApp(
+    ProviderScope(
+      overrides: [appConfigProvider.overrideWithValue(config)],
+      child: const NeocomApp(),
+    ),
+  );
 }
 
-class NeocomApp extends StatelessWidget {
-  const NeocomApp({super.key, required this.config});
-
-  final AppConfig config;
+class NeocomApp extends ConsumerWidget {
+  const NeocomApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final config = ref.watch(appConfigProvider);
     return MaterialApp(
       title: config.isDev ? 'Neocom (dev)' : 'Neocom',
       debugShowCheckedModeBanner: config.isDev,
@@ -28,18 +35,7 @@ class NeocomApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const _PlaceholderScreen(),
-    );
-  }
-}
-
-class _PlaceholderScreen extends StatelessWidget {
-  const _PlaceholderScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: Text('Neocom')),
+      home: const CharacterListScreen(),
     );
   }
 }

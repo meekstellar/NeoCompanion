@@ -1,14 +1,27 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:neocom/core/auth/auth_providers.dart';
+import 'package:neocom/core/auth/token_set.dart';
 import 'package:neocom/core/config/app_config.dart';
 import 'package:neocom/core/config/flavor.dart';
 import 'package:neocom/main.dart';
 
 void main() {
-  testWidgets('App boots and shows placeholder', (tester) async {
+  testWidgets('Empty character list shows the add-character CTA',
+      (tester) async {
     await tester.pumpWidget(
-      NeocomApp(config: AppConfig.forFlavor(Flavor.dev)),
+      ProviderScope(
+        overrides: [
+          appConfigProvider.overrideWithValue(AppConfig.forFlavor(Flavor.dev)),
+          storedCharactersProvider
+              .overrideWith((ref) => Future.value(<TokenSet>[])),
+        ],
+        child: const NeocomApp(),
+      ),
     );
-    expect(find.text('Neocom'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('Add character'), findsOneWidget);
+    expect(find.text('No characters yet'), findsOneWidget);
   });
 }
