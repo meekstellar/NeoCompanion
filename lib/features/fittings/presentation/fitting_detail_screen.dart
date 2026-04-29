@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/types/presentation/eve_type_image.dart';
 import '../data/dto/fitting.dart';
 import '../domain/eft_format.dart';
 import '../domain/slot_grouping.dart';
@@ -82,28 +83,44 @@ class _FittingDetailView extends StatelessWidget {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    'SHIP',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          letterSpacing: 1.2,
-                          color: Theme.of(context).colorScheme.primary,
+                  EveTypeImage(
+                    typeId: fitting.shipTypeId,
+                    kind: EveTypeImageKind.render,
+                    size: 96,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'SHIP',
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    letterSpacing: 1.2,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
                         ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _name(fitting.shipTypeId),
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  if (fitting.description.trim().isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      fitting.description,
-                      style: Theme.of(context).textTheme.bodySmall,
+                        const SizedBox(height: 4),
+                        Text(
+                          _name(fitting.shipTypeId),
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        if (fitting.description.trim().isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            fitting.description,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -154,9 +171,15 @@ class _SlotSection extends StatelessWidget {
             const SizedBox(height: 8),
             ...items.map(
               (it) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Row(
                   children: [
+                    EveTypeImage(
+                      typeId: it.typeId,
+                      size: 32,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         resolveName(it.typeId),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/esi_error_message.dart';
+import '../../../core/types/presentation/eve_type_image.dart';
 import '../data/dto/fitting.dart';
 import '../fitting_providers.dart';
 import 'eft_import_screen.dart';
@@ -83,6 +84,12 @@ class _FittingTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       onTap: onTap,
+      leading: EveTypeImage(
+        typeId: fitting.shipTypeId,
+        kind: EveTypeImageKind.render,
+        size: 48,
+        borderRadius: BorderRadius.circular(4),
+      ),
       title: Text(fitting.name),
       subtitle: Text(
         '$shipName • ${fitting.items.length} modules',
