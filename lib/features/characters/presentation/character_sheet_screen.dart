@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../skills/presentation/skill_queue_screen.dart';
 import '../character_providers.dart';
 
 class CharacterSheetScreen extends ConsumerWidget {
@@ -19,6 +20,17 @@ class CharacterSheetScreen extends ConsumerWidget {
           data: (d) => Text(d.publicInfo.name),
           orElse: () => const Text('Character'),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Skill queue',
+            icon: const Icon(Icons.school_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => SkillQueueScreen(characterId: characterId),
+              ),
+            ),
+          ),
+        ],
       ),
       body: sheet.when(
         loading: () => const Center(child: CircularProgressIndicator()),
