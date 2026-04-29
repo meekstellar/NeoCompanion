@@ -24,6 +24,8 @@ class FakeAdapter implements HttpClientAdapter {
   final List<FakeResponse> _queue;
   final List<RequestOptions> requests = [];
 
+  void queueResponse(FakeResponse response) => _queue.add(response);
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,

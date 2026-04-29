@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../config/app_config.dart';
+import '../storage/secure_key_value_store.dart';
 import 'eve_sso_endpoints.dart';
 import 'eve_sso_service.dart';
 import 'jwt_validator.dart';
@@ -16,6 +17,10 @@ final appConfigProvider = Provider<AppConfig>((ref) {
 
 final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   return const FlutterSecureStorage();
+});
+
+final secureKeyValueStoreProvider = Provider<SecureKeyValueStore>((ref) {
+  return FlutterSecureKeyValueStore(ref.watch(secureStorageProvider));
 });
 
 final dioProvider = Provider<Dio>((ref) => Dio());
@@ -32,7 +37,7 @@ final jwtValidatorProvider = Provider<JwtValidator>((ref) {
 
 final tokenManagerProvider = Provider<TokenManager>((ref) {
   return TokenManager(
-    storage: ref.watch(secureStorageProvider),
+    storage: ref.watch(secureKeyValueStoreProvider),
     endpoints: ref.watch(eveSsoEndpointsProvider),
     clientId: ref.watch(appConfigProvider).eveClientId,
     dio: ref.watch(dioProvider),

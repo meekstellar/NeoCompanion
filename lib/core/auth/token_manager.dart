@@ -1,14 +1,14 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../storage/secure_key_value_store.dart';
 import 'eve_sso_endpoints.dart';
 import 'token_set.dart';
 
 class TokenManager {
   TokenManager({
-    required FlutterSecureStorage storage,
+    required SecureKeyValueStore storage,
     required EveSsoEndpoints endpoints,
     required String clientId,
     Dio? dio,
@@ -17,7 +17,7 @@ class TokenManager {
         _clientId = clientId,
         _dio = dio ?? Dio();
 
-  final FlutterSecureStorage _storage;
+  final SecureKeyValueStore _storage;
   final EveSsoEndpoints _endpoints;
   final String _clientId;
   final Dio _dio;
@@ -26,28 +26,28 @@ class TokenManager {
   String _tokenKey(int characterId) => 'eve_token.$characterId';
 
   Future<void> store(TokenSet tokens) async {
-    await _storage.write(key: _tokenKey(tokens.characterId), value: tokens.encode());
+    await _storage.write(_tokenKey(tokens.characterId), tokens.encode());
     final ids = await listCharacterIds();
     if (!ids.contains(tokens.characterId)) {
       ids.add(tokens.characterId);
-      await _storage.write(key: _indexKey, value: jsonEncode(ids));
+      await _storage.write(_indexKey, jsonEncode(ids));
     }
   }
 
   Future<TokenSet?> read(int characterId) async {
-    final raw = await _storage.read(key: _tokenKey(characterId));
+    final raw = await _storage.read(_tokenKey(characterId));
     if (raw == null) return null;
     return TokenSet.decode(raw);
   }
 
   Future<void> remove(int characterId) async {
-    await _storage.delete(key: _tokenKey(characterId));
+    await _storage.delete(_tokenKey(characterId));
     final ids = await listCharacterIds()..remove(characterId);
-    await _storage.write(key: _indexKey, value: jsonEncode(ids));
+    await _storage.write(_indexKey, jsonEncode(ids));
   }
 
   Future<List<int>> listCharacterIds() async {
-    final raw = await _storage.read(key: _indexKey);
+    final raw = await _storage.read(_indexKey);
     if (raw == null) return [];
     return (jsonDecode(raw) as List).cast<int>();
   }
