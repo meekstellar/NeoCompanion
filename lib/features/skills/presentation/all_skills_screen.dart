@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/network/esi_error_message.dart';
+import '../../../core/types/presentation/eve_type_image.dart';
+import '../../../core/types/presentation/type_detail_screen.dart';
 import '../data/dto/character_skills.dart';
 import '../skill_providers.dart';
 
@@ -109,9 +111,19 @@ class _SkillRow extends StatelessWidget {
     final s = entry.skill;
     return ListTile(
       dense: true,
+      leading: EveTypeImage(
+        typeId: s.skillId,
+        size: 32,
+        borderRadius: BorderRadius.circular(4),
+      ),
       title: Text(entry.name),
       subtitle: Text('${_formatInt(s.skillpointsInSkill)} SP'),
       trailing: _LevelDots(level: s.activeSkillLevel),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TypeDetailScreen(typeId: s.skillId),
+        ),
+      ),
     );
   }
 }

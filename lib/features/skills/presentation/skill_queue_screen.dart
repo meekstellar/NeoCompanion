@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/network/esi_error_message.dart';
+import '../../../core/types/presentation/type_detail_screen.dart';
 import '../domain/skill_queue_calculator.dart';
 import '../skill_providers.dart';
 import 'all_skills_screen.dart';
@@ -97,6 +98,11 @@ class _SkillQueueScreenState extends ConsumerState<SkillQueueScreen> {
         return _SkillTile(
           progress: _calc.progressOf(entry, _now),
           name: data.skillNames[entry.skillId] ?? '#${entry.skillId}',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => TypeDetailScreen(typeId: entry.skillId),
+            ),
+          ),
         );
       },
     );
@@ -211,10 +217,15 @@ class _StatBlock extends StatelessWidget {
 }
 
 class _SkillTile extends StatelessWidget {
-  const _SkillTile({required this.progress, required this.name});
+  const _SkillTile({
+    required this.progress,
+    required this.name,
+    required this.onTap,
+  });
 
   final SkillProgress progress;
   final String name;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -223,7 +234,10 @@ class _SkillTile extends StatelessWidget {
     final percent = (progress.progressFraction * 100).clamp(0, 100);
 
     return Card(
-      child: Padding(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -263,6 +277,7 @@ class _SkillTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

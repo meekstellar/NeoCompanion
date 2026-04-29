@@ -49,6 +49,7 @@ class TypesDatabase extends ChangeNotifier {
   Map<int, String> _raceNames = const {};
   Map<int, String> _bloodlineNames = const {};
   Map<int, String> _npcCorporationNames = const {};
+  Map<int, String> _attributeDisplayNames = const {};
 
   Map<int, int?> _groupCategory = const {};
   Map<int, int?> _typeGroup = const {};
@@ -78,6 +79,8 @@ class TypesDatabase extends ChangeNotifier {
   String? lookupRace(int id) => _raceNames[id];
   String? lookupBloodline(int id) => _bloodlineNames[id];
   String? lookupNpcCorporation(int id) => _npcCorporationNames[id];
+  String? lookupAttributeName(int attributeId) =>
+      _attributeDisplayNames[attributeId];
 
   Iterable<MapEntry<int, String>> get entries => _typeNames.entries;
 
@@ -192,6 +195,18 @@ class TypesDatabase extends ChangeNotifier {
         await _readNameMap(db, 'bloodline_translations', 'bloodline_id');
     _npcCorporationNames = await _readNameMap(
         db, 'npc_corporation_translations', 'corporation_id');
+
+    final attrRows = await db.query(
+      'dogma_attribute_translations',
+      columns: ['attribute_id', 'display_name'],
+      where: 'lang = ? AND display_name IS NOT NULL',
+      whereArgs: [sdeDefaultLanguage],
+    );
+    _attributeDisplayNames = {
+      for (final r in attrRows)
+        if (r['attribute_id'] is num)
+          (r['attribute_id']! as num).toInt(): r['display_name'].toString(),
+    };
 
     final typeRows = await db.query('types', columns: ['id', 'group_id']);
     _typeGroup = {
@@ -319,6 +334,7 @@ class TypesDatabase extends ChangeNotifier {
     _raceNames = const {};
     _bloodlineNames = const {};
     _npcCorporationNames = const {};
+    _attributeDisplayNames = const {};
     _groupCategory = const {};
     _typeGroup = const {};
     _buildNumber = null;

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../types_database.dart';
 import '../types_database_providers.dart';
+import 'eve_type_image.dart';
+import 'type_detail_screen.dart';
 
 class ItemDatabaseScreen extends ConsumerStatefulWidget {
   const ItemDatabaseScreen({super.key});
@@ -153,10 +155,20 @@ class _ItemList extends StatelessWidget {
         final e = filtered[i];
         return ListTile(
           dense: true,
+          leading: EveTypeImage(
+            typeId: e.key,
+            size: 32,
+            borderRadius: BorderRadius.circular(4),
+          ),
           title: Text(e.value),
           trailing: Text(
             '#${e.key}',
             style: Theme.of(context).textTheme.bodySmall,
+          ),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => TypeDetailScreen(typeId: e.key),
+            ),
           ),
         );
       },
