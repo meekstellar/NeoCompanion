@@ -7,6 +7,7 @@ import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/scope_compatibility.dart';
 import '../../../core/auth/sso_scopes.dart';
 import '../../../core/network/esi_error_message.dart';
+import '../../fittings/presentation/fittings_screen.dart';
 import '../../skills/presentation/skill_queue_screen.dart';
 import '../../wallet/presentation/wallet_journal_screen.dart';
 import '../character_providers.dart';
@@ -26,6 +27,15 @@ class CharacterSheetScreen extends ConsumerWidget {
           orElse: () => const Text('Character'),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Fittings',
+            icon: const Icon(Icons.layers_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => FittingsScreen(characterId: characterId),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'Skill queue',
             icon: const Icon(Icons.school_outlined),
