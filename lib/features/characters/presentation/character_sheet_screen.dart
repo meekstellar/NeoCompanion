@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../skills/presentation/skill_queue_screen.dart';
+import '../../wallet/presentation/wallet_journal_screen.dart';
 import '../character_providers.dart';
 
 class CharacterSheetScreen extends ConsumerWidget {
@@ -80,14 +81,45 @@ class CharacterSheetScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              _Section(
-                title: 'Wallet',
-                rows: [
-                  _Row(
-                    label: 'Balance',
-                    value: _formatIsk(data.walletBalance),
+              Card(
+                child: InkWell(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          WalletJournalScreen(characterId: characterId),
+                    ),
                   ),
-                ],
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'WALLET',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    letterSpacing: 1.2,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                            ),
+                            const Spacer(),
+                            const Icon(Icons.chevron_right, size: 18),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _Row(
+                          label: 'Balance',
+                          value: _formatIsk(data.walletBalance),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
