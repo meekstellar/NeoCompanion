@@ -53,6 +53,20 @@ class EsiClient {
       options: Options(extra: {esiCharacterIdKey: characterId}),
     );
   }
+
+  Future<Response<T>> post<T>(
+    String path, {
+    Object? data,
+    int? characterId,
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return _dio.post<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: Options(extra: {esiCharacterIdKey: characterId}),
+    );
+  }
 }
 
 Future<void> _defaultSleep(Duration d) => Future<void>.delayed(d);
