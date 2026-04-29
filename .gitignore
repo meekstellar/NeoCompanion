@@ -44,3 +44,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 PLAN.md
+
+# Local SSO/runtime config — secrets stay out of the repo
+/config/*.json
+!/config/*.json.example

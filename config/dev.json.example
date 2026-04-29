@@ -1,0 +1,6 @@
+{
+  "EVE_CLIENT_ID_DEV": "<your dev client id from developers.eveonline.com>",
+  "EVE_CALLBACK_SCHEME": "eveauth-neocompanion",
+  "ESI_COMPATIBILITY_DATE": "2026-04-29",
+  "SENTRY_DSN": ""
+}
