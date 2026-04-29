@@ -116,8 +116,8 @@ class _ItemDatabaseScreenState extends ConsumerState<ItemDatabaseScreen> {
               ),
             const SizedBox(height: 24),
             Text(
-              'The database powers item names across Assets, Market, '
-              'Fittings, Skills and Wallet. Updating takes a minute and '
+              'The database powers item names across Market, Fittings, '
+              'Skills and Wallet. Updating takes a minute and '
               'fires a few hundred ESI requests, so do it on Wi-Fi when '
               "you can — it's only needed once and after major patches.",
               style: Theme.of(context).textTheme.bodySmall?.copyWith(

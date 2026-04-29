@@ -8,7 +8,6 @@ import '../../../core/auth/scope_compatibility.dart';
 import '../../../core/auth/sso_scopes.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../../core/types/presentation/item_database_screen.dart';
-import '../../assets/presentation/assets_screen.dart';
 import '../../fittings/presentation/fittings_screen.dart';
 import '../../market/presentation/market_orders_screen.dart';
 import '../../skills/presentation/skill_queue_screen.dart';
@@ -83,15 +82,6 @@ class CharacterSheetScreen extends ConsumerWidget {
                       MaterialPageRoute<void>(
                         builder: (_) =>
                             WalletJournalScreen(characterId: characterId),
-                      ),
-                    ),
-                  ),
-                  _MenuRow(
-                    iconAsset: 'assets/icons/menu/Assets.png',
-                    title: 'Assets',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => AssetsScreen(characterId: characterId),
                       ),
                     ),
                   ),
