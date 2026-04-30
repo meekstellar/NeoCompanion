@@ -9,7 +9,9 @@ import '../../../core/auth/sso_scopes.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../../core/types/presentation/item_database_screen.dart';
 import '../../assets/presentation/assets_screen.dart';
+import '../../clones/presentation/jump_clones_screen.dart';
 import '../../fittings/presentation/fittings_screen.dart';
+import '../../mail/presentation/mail_screen.dart';
 import '../../market/presentation/market_orders_screen.dart';
 import '../../skills/presentation/skill_queue_screen.dart';
 import '../../wallet/presentation/wallet_journal_screen.dart';
@@ -72,6 +74,25 @@ class CharacterSheetScreen extends ConsumerWidget {
                       MaterialPageRoute<void>(
                         builder: (_) =>
                             SkillQueueScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/Mail.png',
+                    title: 'Mail',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => MailScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/JumpClones.png',
+                    title: 'Jump Clones',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            JumpClonesScreen(characterId: characterId),
                       ),
                     ),
                   ),
@@ -288,27 +309,28 @@ class _MenuCard extends StatelessWidget {
 
 class _MenuRow extends StatelessWidget {
   const _MenuRow({
-    required this.iconAsset,
     required this.title,
     required this.onTap,
+    this.iconAsset,
+    this.icon,
     this.subtitle,
-  });
+  }) : assert(iconAsset != null || icon != null,
+            'Provide either iconAsset or icon');
 
-  final String iconAsset;
+  final String? iconAsset;
+  final IconData? icon;
   final String title;
   final String? subtitle;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final color = Theme.of(context).iconTheme.color;
     return ListTile(
       onTap: onTap,
-      leading: Image.asset(
-        iconAsset,
-        width: 28,
-        height: 28,
-        color: Theme.of(context).iconTheme.color,
-      ),
+      leading: iconAsset != null
+          ? Image.asset(iconAsset!, width: 28, height: 28, color: color)
+          : Icon(icon, size: 26, color: color),
       title: Text(title),
       subtitle: subtitle == null ? null : Text(subtitle!),
       trailing: const Icon(Icons.chevron_right, size: 20),
