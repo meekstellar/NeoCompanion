@@ -13,6 +13,8 @@ import '../../assets/presentation/assets_screen.dart';
 import '../../clones/presentation/jump_clones_screen.dart';
 import '../../contracts/presentation/contracts_screen.dart';
 import '../../fittings/presentation/fittings_screen.dart';
+import '../../industry/presentation/industry_jobs_screen.dart';
+import '../../planets/presentation/planetary_colonies_screen.dart';
 import '../../mail/presentation/mail_screen.dart';
 import '../../market/presentation/market_orders_screen.dart';
 import '../../server_status/data/dto/server_status.dart';
@@ -105,32 +107,27 @@ class CharacterSheetScreen extends ConsumerWidget {
                     ),
                   ),
                   _MenuRow(
-                    iconAsset: 'assets/icons/menu/Wallet.png',
-                    title: 'Wealth',
-                    subtitle: '${_formatIsk(data.walletBalance)} ISK',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            WalletJournalScreen(characterId: characterId),
-                      ),
-                    ),
-                  ),
-                  _MenuRow(
-                    iconAsset: 'assets/icons/menu/Assets.png',
-                    title: 'Assets',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => AssetsScreen(characterId: characterId),
-                      ),
-                    ),
-                  ),
-                  _MenuRow(
                     iconAsset: 'assets/icons/menu/Fitting.png',
                     title: 'Fittings',
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) =>
                             FittingsScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const _SectionHeader('Operations'),
+              _MenuCard(
+                rows: [
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/Assets.png',
+                    title: 'Assets',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AssetsScreen(characterId: characterId),
                       ),
                     ),
                   ),
@@ -151,6 +148,38 @@ class CharacterSheetScreen extends ConsumerWidget {
                       MaterialPageRoute<void>(
                         builder: (_) =>
                             ContractsScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/Wallet.png',
+                    title: 'Wealth',
+                    subtitle: '${_formatIsk(data.walletBalance)} ISK',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            WalletJournalScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/IndustryJobs.png',
+                    title: 'Industry Jobs',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            IndustryJobsScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/PlanetaryColonies.png',
+                    title: 'Planetary Colonies',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => PlanetaryColoniesScreen(
+                          characterId: characterId,
+                        ),
                       ),
                     ),
                   ),
