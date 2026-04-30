@@ -58,21 +58,20 @@ class CharacterSheetScreen extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
             children: [
               _ScopeUpgradeBanner(characterId: characterId),
-              _HeaderCard(data: data),
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        CharacterDetailsScreen(characterId: characterId),
+                  ),
+                ),
+                child: _HeaderCard(data: data),
+              ),
               const SizedBox(height: 24),
               const _SectionHeader('Character'),
               _MenuCard(
                 rows: [
-                  _MenuRow(
-                    iconAsset: 'assets/icons/menu/Biography.png',
-                    title: 'Character Sheet',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            CharacterDetailsScreen(characterId: characterId),
-                      ),
-                    ),
-                  ),
                   _MenuRow(
                     iconAsset: 'assets/icons/menu/SkillQueue.png',
                     title: 'Skill Queue',
@@ -236,6 +235,11 @@ class _HeaderCard extends StatelessWidget {
                   ],
                 ],
               ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 22,
+              color: Theme.of(context).hintColor.withValues(alpha: 0.7),
             ),
           ],
         ),
