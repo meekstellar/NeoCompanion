@@ -13,4 +13,5 @@ const eveMvpScopes = <String>[
   'esi-assets.read_assets.v1',
   'esi-markets.read_character_orders.v1',
   'esi-mail.read_mail.v1',
+  'esi-contracts.read_character_contracts.v1',
 ];

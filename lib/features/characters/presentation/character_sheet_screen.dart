@@ -11,6 +11,7 @@ import '../../../core/types/presentation/item_database_screen.dart';
 import '../../assets/asset_providers.dart';
 import '../../assets/presentation/assets_screen.dart';
 import '../../clones/presentation/jump_clones_screen.dart';
+import '../../contracts/presentation/contracts_screen.dart';
 import '../../fittings/presentation/fittings_screen.dart';
 import '../../mail/presentation/mail_screen.dart';
 import '../../market/presentation/market_orders_screen.dart';
@@ -138,6 +139,16 @@ class CharacterSheetScreen extends ConsumerWidget {
                       MaterialPageRoute<void>(
                         builder: (_) =>
                             MarketOrdersScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/Contracts.png',
+                    title: 'Contracts',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            ContractsScreen(characterId: characterId),
                       ),
                     ),
                   ),
