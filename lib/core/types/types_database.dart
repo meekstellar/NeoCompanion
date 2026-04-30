@@ -10,6 +10,7 @@ export 'sde_schema.dart'
         sdeLanguages,
         sdeDefaultLanguage,
         TypeRequiredSkill,
+        TypeTrait,
         createSdeSchema,
         createSdeIndexes,
         openExistingSdeDatabase;
@@ -52,6 +53,8 @@ class TypesDatabase extends ChangeNotifier {
   Map<int, String> _bloodlineNames = const {};
   Map<int, String> _npcCorporationNames = const {};
   Map<int, String> _attributeDisplayNames = const {};
+  Map<int, String> _attributeCategoryNames = const {};
+  Map<int, int?> _attributeCategoryByAttribute = const {};
 
   Map<int, int?> _groupCategory = const {};
   Map<int, int?> _typeGroup = const {};
@@ -95,6 +98,16 @@ class TypesDatabase extends ChangeNotifier {
   String? lookupNpcCorporation(int id) => _npcCorporationNames[id];
   String? lookupAttributeName(int attributeId) =>
       _attributeDisplayNames[attributeId];
+
+  /// Display name of the dogma-attribute category (e.g. "Structure",
+  /// "Capacitor"). English-only — CCP doesn't translate these.
+  String? lookupAttributeCategoryName(int categoryId) =>
+      _attributeCategoryNames[categoryId];
+
+  /// Which category an attribute belongs to. Returns null both for
+  /// unknown attributes and for attributes the SDE leaves uncategorised.
+  int? attributeCategoryId(int attributeId) =>
+      _attributeCategoryByAttribute[attributeId];
 
   /// Type IDs that belong to [groupId], in no particular order. Empty
   /// when the group has no types in the local cache.
@@ -181,6 +194,39 @@ class TypesDatabase extends ChangeNotifier {
     return out;
   }
 
+  /// Trait bonuses (the blue-text lines in Show Info) for [typeId],
+  /// localised to [lang]. Sorted by `(skill_type_id, importance)` so
+  /// role bonuses come first and per-skill bonuses appear in the
+  /// in-game display order.
+  Future<List<TypeTrait>> typeTraits(int typeId, {String? lang}) async {
+    final db = _db;
+    if (db == null) return const [];
+    final rows = await db.rawQuery('''
+      SELECT t.id, t.skill_type_id, t.importance, t.bonus, t.unit_id,
+             tt.bonus_text
+      FROM traits AS t
+      LEFT OUTER JOIN trait_translations AS tt
+        ON tt.trait_id = t.id AND tt.lang = ?
+      WHERE t.type_id = ?
+      ORDER BY
+        CASE WHEN t.skill_type_id IS NULL THEN 0 ELSE 1 END,
+        t.skill_type_id,
+        COALESCE(t.importance, 0)
+    ''', [lang ?? sdeDefaultLanguage, typeId]);
+    final out = <TypeTrait>[];
+    for (final r in rows) {
+      final text = r['bonus_text'] as String?;
+      if (text == null || text.isEmpty) continue;
+      out.add(TypeTrait(
+        skillTypeId: (r['skill_type_id'] as num?)?.toInt(),
+        bonus: (r['bonus'] as num?)?.toDouble(),
+        unitId: (r['unit_id'] as num?)?.toInt(),
+        bonusText: text,
+      ));
+    }
+    return out;
+  }
+
   Future<String?> _localizedField(
     String table,
     String idColumn,
@@ -254,6 +300,26 @@ class TypesDatabase extends ChangeNotifier {
       for (final r in attrRows)
         if (r['attribute_id'] is num)
           (r['attribute_id']! as num).toInt(): r['display_name'].toString(),
+    };
+
+    final attrCategoryRows = await db.query(
+      'dogma_attribute_categories',
+      columns: ['id', 'name'],
+    );
+    _attributeCategoryNames = {
+      for (final r in attrCategoryRows)
+        if (r['id'] is num)
+          (r['id']! as num).toInt(): r['name']?.toString() ?? '',
+    };
+
+    final attrIdToCategory = await db.query(
+      'dogma_attributes',
+      columns: ['id', 'category_id'],
+    );
+    _attributeCategoryByAttribute = {
+      for (final r in attrIdToCategory)
+        if (r['id'] is num)
+          (r['id']! as num).toInt(): (r['category_id'] as num?)?.toInt(),
     };
 
     final typeRows = await db
@@ -461,6 +527,8 @@ class TypesDatabase extends ChangeNotifier {
     _bloodlineNames = const {};
     _npcCorporationNames = const {};
     _attributeDisplayNames = const {};
+    _attributeCategoryNames = const {};
+    _attributeCategoryByAttribute = const {};
     _groupCategory = const {};
     _typeGroup = const {};
     _typesByGroup = const {};

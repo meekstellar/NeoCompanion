@@ -63,8 +63,10 @@ const _wantedFiles = <String>[
   'categories.jsonl',
   'marketGroups.jsonl',
   'dogmaAttributes.jsonl',
+  'dogmaAttributeCategories.jsonl',
   'dogmaEffects.jsonl',
   'typeDogma.jsonl',
+  'typeBonus.jsonl',
   'mapRegions.jsonl',
   'mapConstellations.jsonl',
   'mapSolarSystems.jsonl',
@@ -208,8 +210,10 @@ class SdeImporter {
       'categories.jsonl': 0.005,
       'marketGroups.jsonl': 0.02,
       'dogmaAttributes.jsonl': 0.02,
+      'dogmaAttributeCategories.jsonl': 0.001,
       'dogmaEffects.jsonl': 0.02,
-      'typeDogma.jsonl': 0.28,
+      'typeDogma.jsonl': 0.27,
+      'typeBonus.jsonl': 0.014,
       'mapRegions.jsonl': 0.005,
       'mapConstellations.jsonl': 0.01,
       'mapSolarSystems.jsonl': 0.10,
@@ -284,10 +288,14 @@ class SdeImporter {
         return _importMarketGroups;
       case 'dogmaAttributes.jsonl':
         return _importDogmaAttributes;
+      case 'dogmaAttributeCategories.jsonl':
+        return _importDogmaAttributeCategories;
       case 'dogmaEffects.jsonl':
         return _importDogmaEffects;
       case 'typeDogma.jsonl':
         return _importTypeDogma;
+      case 'typeBonus.jsonl':
+        return _importTypeBonus;
       case 'mapRegions.jsonl':
         return _importRegions;
       case 'mapConstellations.jsonl':
@@ -511,6 +519,102 @@ Stream<double> _importDogmaAttributes(
     if (processed % 200 == 0) yield (processed / total).clamp(0.0, 0.99);
   }
   await batch.commit(noResult: true);
+  yield 1.0;
+}
+
+Stream<double> _importDogmaAttributeCategories(
+    Database db, Stream<_JsonEntry> entries) async* {
+  final batch = db.batch();
+  await for (final e in entries) {
+    final m = e.body;
+    batch.insert('dogma_attribute_categories', {
+      'id': e.id,
+      'name': _asString(m['name']) ?? '',
+      'description': _asString(m['description']),
+    });
+  }
+  await batch.commit(noResult: true);
+  yield 1.0;
+}
+
+/// `typeBonus.jsonl` carries one row per type with up to two bonus
+/// flavours: `roleBonuses` (a flat list, no skill association) and
+/// `types` (a list of `{_key: skillTypeId, _value: [bonus, ...]}`
+/// entries — bonuses gained per level of that skill). We flatten both
+/// into one `traits` row + one `trait_translations` row per language.
+Stream<double> _importTypeBonus(
+    Database db, Stream<_JsonEntry> entries) async* {
+  const total = 700.0; // approx — only ships/modules with bonuses
+  var processed = 0;
+  Batch batch = db.batch();
+  var queued = 0;
+
+  Future<void> flush() async {
+    if (queued == 0) return;
+    await batch.commit(noResult: true);
+    batch = db.batch();
+    queued = 0;
+  }
+
+  Future<void> insertBonus(int typeId, int? skillTypeId, Object? entry) async {
+    if (entry is! Map) return;
+    final bonus = _asDouble(entry['bonus']);
+    final unitId = _asInt(entry['unitID']);
+    final importance = _asInt(entry['importance']);
+    final bonusText = entry['bonusText'];
+    if (bonusText is! Map) return;
+
+    // sqflite's batch doesn't expose lastInsertId, so use a real
+    // insert here to grab the synthetic trait id and then enqueue
+    // translations onto the batch. Traits are sparse (a few hundred
+    // ships and modules), so the round-trip cost is fine.
+    final traitId = await db.insert('traits', {
+      'type_id': typeId,
+      'skill_type_id': skillTypeId,
+      'importance': importance,
+      'bonus': bonus,
+      'unit_id': unitId,
+    });
+
+    for (final entry in bonusText.entries) {
+      final lang = entry.key;
+      final text = entry.value;
+      if (lang is! String || text is! String) continue;
+      if (!sdeLanguages.contains(lang)) continue;
+      batch.insert('trait_translations', {
+        'trait_id': traitId,
+        'lang': lang,
+        'bonus_text': text,
+      });
+      queued++;
+    }
+  }
+
+  await for (final e in entries) {
+    final m = e.body;
+    final roleBonuses = m['roleBonuses'];
+    if (roleBonuses is List) {
+      for (final b in roleBonuses) {
+        await insertBonus(e.id, null, b);
+      }
+    }
+    final perSkill = m['types'];
+    if (perSkill is List) {
+      for (final entry in perSkill) {
+        if (entry is! Map) continue;
+        final skillId = _asInt(entry['_key']);
+        final bonuses = entry['_value'];
+        if (skillId == null || bonuses is! List) continue;
+        for (final b in bonuses) {
+          await insertBonus(e.id, skillId, b);
+        }
+      }
+    }
+    if (queued >= 1000) await flush();
+    processed++;
+    if (processed % 50 == 0) yield (processed / total).clamp(0.0, 0.99);
+  }
+  await flush();
   yield 1.0;
 }
 

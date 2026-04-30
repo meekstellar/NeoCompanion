@@ -10,7 +10,12 @@ import 'package:sqflite_common/sqflite.dart';
 ///   2 → 3: added `stations` + `station_translations` so NPC station
 ///          names (e.g. "Jita IV - Moon 4 - Caldari Navy Assembly
 ///          Plant") resolve locally without an ESI round-trip.
-const int kSdeSchemaVersion = 3;
+///   3 → 4: added `dogma_attribute_categories` (so the type detail
+///          screen can group attributes the way the in-game Show Info
+///          window does — Structure, Capacitor, Targeting, …) and
+///          `traits` + `trait_translations` (the blue-text role and
+///          per-skill ship bonuses).
+const int kSdeSchemaVersion = 4;
 
 /// All EVE SDE languages we ingest. Stored as ISO-639-1 codes in the
 /// `*_translations` tables.
@@ -28,6 +33,25 @@ class TypeRequiredSkill {
   const TypeRequiredSkill({required this.skillTypeId, required this.level});
   final int skillTypeId;
   final int level;
+}
+
+/// One blue-text bonus from `typeBonus.jsonl`. `skillTypeId` is null
+/// for role bonuses (a flat property of the type); when set it's the
+/// type id of the skill whose levels the bonus scales with.
+/// `bonusText` is already localised; it can contain HTML
+/// `<a href=showinfo:NNN>` links that render via `HtmlDescription`.
+class TypeTrait {
+  const TypeTrait({
+    required this.skillTypeId,
+    required this.bonus,
+    required this.unitId,
+    required this.bonusText,
+  });
+
+  final int? skillTypeId;
+  final double? bonus;
+  final int? unitId;
+  final String bonusText;
 }
 
 /// Creates the SQLite tables we import the SDE into (no indexes — those
@@ -118,6 +142,15 @@ CREATE TABLE dogma_attribute_translations (
   display_name TEXT,
   description TEXT,
   PRIMARY KEY (attribute_id, lang)
+)''');
+  // Categories let the type detail screen render attributes the way
+  // the in-game Show Info window does (Structure / Capacitor /
+  // Targeting / …). CCP only ships English names for these.
+  await db.execute('''
+CREATE TABLE dogma_attribute_categories (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT
 )''');
 
   await db.execute('''
@@ -286,6 +319,30 @@ CREATE TABLE station_translations (
   name TEXT NOT NULL,
   PRIMARY KEY (station_id, lang)
 )''');
+
+  // Blue-text bonuses on ship/module info (e.g. "5% bonus to medium
+  // hybrid turret damage per Caldari Frigate level"). CCP's
+  // `typeBonus.jsonl` carries two flavours: `roleBonuses` (no skill —
+  // a flat property of the type) and per-skill bonuses keyed by the
+  // skill's typeId. We collapse both into one table with `skill_type_id`
+  // null for role bonuses; `importance` controls the in-game display
+  // order.
+  await db.execute('''
+CREATE TABLE traits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type_id INTEGER NOT NULL,
+  skill_type_id INTEGER,
+  importance INTEGER,
+  bonus REAL,
+  unit_id INTEGER
+)''');
+  await db.execute('''
+CREATE TABLE trait_translations (
+  trait_id INTEGER NOT NULL,
+  lang TEXT NOT NULL,
+  bonus_text TEXT NOT NULL,
+  PRIMARY KEY (trait_id, lang)
+)''');
 }
 
 /// Creates the secondary indexes after the bulk import is complete.
@@ -302,6 +359,7 @@ Future<void> createSdeIndexes(Database db) async {
       'CREATE INDEX idx_tda_type ON type_dogma_attributes(type_id)');
   await db.execute(
       'CREATE INDEX idx_stations_system ON stations(solar_system_id)');
+  await db.execute('CREATE INDEX idx_traits_type ON traits(type_id)');
 }
 
 /// Opens (or creates) the production SDE SQLite file. Returns null if

@@ -33,11 +33,13 @@ class _TypeDetailScreenState extends ConsumerState<TypeDetailScreen> {
       db.typeDescription(widget.typeId),
       db.typeRequiredSkills(widget.typeId),
       db.typeDogmaAttributes(widget.typeId),
+      db.typeTraits(widget.typeId),
     ]);
     return _TypeDetail(
       description: results[0] as String?,
       requiredSkills: results[1] as List<TypeRequiredSkill>,
       attributes: results[2] as Map<int, double>,
+      traits: results[3] as List<TypeTrait>,
     );
   }
 
@@ -88,6 +90,10 @@ class _TypeDetailScreenState extends ConsumerState<TypeDetailScreen> {
                 ),
                 const SizedBox(height: 16),
               ],
+              if (detail.traits.isNotEmpty) ...[
+                _Traits(traits: detail.traits, db: db),
+                const SizedBox(height: 16),
+              ],
               if (detail.requiredSkills.isNotEmpty) ...[
                 _RequiredSkills(skills: detail.requiredSkills, db: db),
                 const SizedBox(height: 16),
@@ -110,11 +116,13 @@ class _TypeDetail {
     required this.description,
     required this.requiredSkills,
     required this.attributes,
+    required this.traits,
   });
 
   final String? description;
   final List<TypeRequiredSkill> requiredSkills;
   final Map<int, double> attributes;
+  final List<TypeTrait> traits;
 }
 
 /// Dogma attribute IDs that encode required-skill prereqs. Already
@@ -324,6 +332,11 @@ class _RequiredSkills extends StatelessWidget {
   }
 }
 
+/// Grouped attribute display, mirroring the in-game Show Info layout:
+/// one section per `dgm_attribute_categories` row (Structure, Shield,
+/// Capacitor, Targeting, …) with attributes sorted alphabetically
+/// inside. Attributes whose category is missing or named "NULL" land
+/// in a single fallback "Other" section.
 class _Attributes extends StatelessWidget {
   const _Attributes({
     required this.attributes,
@@ -335,48 +348,165 @@ class _Attributes extends StatelessWidget {
   final TypesDatabase db;
   final Set<int> excludeIds;
 
+  static const _otherCategoryKey = -1;
+
   @override
   Widget build(BuildContext context) {
-    final rows = <(String, double)>[];
+    final byCategory = <int, List<(String, double)>>{};
     attributes.forEach((id, value) {
       if (excludeIds.contains(id)) return;
       final name = db.lookupAttributeName(id);
       if (name == null) return;
-      rows.add((name, value));
+      final categoryId = db.attributeCategoryId(id);
+      final categoryName = categoryId == null
+          ? null
+          : db.lookupAttributeCategoryName(categoryId);
+      final bucket = (categoryId != null &&
+              categoryName != null &&
+              categoryName.isNotEmpty &&
+              categoryName != 'NULL')
+          ? categoryId
+          : _otherCategoryKey;
+      byCategory.putIfAbsent(bucket, () => []).add((name, value));
     });
-    if (rows.isEmpty) return const SizedBox.shrink();
-    rows.sort((a, b) => a.$1.compareTo(b.$1));
+    if (byCategory.isEmpty) return const SizedBox.shrink();
 
-    return _Section(
-      title: 'Attributes',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final r in rows)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      r.$1,
-                      style: Theme.of(context).textTheme.bodySmall,
+    final categoryIds = byCategory.keys.toList()
+      ..sort((a, b) {
+        // "Other" pinned to the end.
+        if (a == _otherCategoryKey) return 1;
+        if (b == _otherCategoryKey) return -1;
+        final an = db.lookupAttributeCategoryName(a) ?? '';
+        final bn = db.lookupAttributeCategoryName(b) ?? '';
+        return an.compareTo(bn);
+      });
+
+    return Column(
+      children: [
+        for (final cid in categoryIds) ...[
+          _Section(
+            title: cid == _otherCategoryKey
+                ? 'Other'
+                : db.lookupAttributeCategoryName(cid) ?? 'Attributes',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final r in (byCategory[cid]!
+                  ..sort((a, b) => a.$1.compareTo(b.$1))))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            r.$1,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                        Text(
+                          _formatValue(r.$2),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                        ),
+                      ],
                     ),
                   ),
-                  Text(
-                    _formatValue(r.$2),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                  ),
-                ],
-              ),
+              ],
             ),
+          ),
+          if (cid != categoryIds.last) const SizedBox(height: 16),
+        ],
+      ],
+    );
+  }
+}
+
+/// Blue-text bonuses (role + per-skill). Per-skill bonuses are
+/// grouped by their skill so the display matches the in-game
+/// "Bonuses" tab. Bonus text can carry HTML (`<a href=showinfo:NNN>`),
+/// rendered through the same `HtmlDescription` we use for type
+/// descriptions.
+class _Traits extends StatelessWidget {
+  const _Traits({required this.traits, required this.db});
+
+  final List<TypeTrait> traits;
+  final TypesDatabase db;
+
+  @override
+  Widget build(BuildContext context) {
+    // Group while preserving order — typeTraits() sorts role bonuses
+    // first, then per-skill in skill_type_id order.
+    final groups = <int?, List<TypeTrait>>{};
+    final keyOrder = <int?>[];
+    for (final t in traits) {
+      if (!groups.containsKey(t.skillTypeId)) {
+        keyOrder.add(t.skillTypeId);
+      }
+      groups.putIfAbsent(t.skillTypeId, () => []).add(t);
+    }
+
+    return _Section(
+      title: 'Traits',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final key in keyOrder) ...[
+            if (key != keyOrder.first) const SizedBox(height: 12),
+            Text(
+              key == null
+                  ? 'Role bonuses'
+                  : '${db.lookup(key) ?? '#$key'} bonuses (per level)',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.secondary,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            for (final t in groups[key]!)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (t.bonus != null) ...[
+                      SizedBox(
+                        width: 56,
+                        child: Text(
+                          _formatBonus(t.bonus!),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: HtmlDescription(
+                        html: t.bonusText,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ],
       ),
     );
   }
+}
+
+String _formatBonus(double v) {
+  // Most bonuses are clean integers ("5%", "10%"); keep one decimal
+  // for the rest ("7.5%").
+  final s = v == v.truncateToDouble()
+      ? NumberFormat('#,##0', 'en_US').format(v)
+      : NumberFormat('#,##0.#', 'en_US').format(v);
+  return '$s%';
 }
 
 String _formatValue(double v) {
