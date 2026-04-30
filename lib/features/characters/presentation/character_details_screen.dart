@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/network/esi_error_message.dart';
+import '../../../core/types/presentation/eve_type_image.dart';
+import '../../../core/types/presentation/type_detail_screen.dart';
 import '../../../core/types/types_database_providers.dart';
 import '../character_providers.dart';
 
@@ -82,25 +85,214 @@ class CharacterDetailsScreen extends ConsumerWidget {
                       label: 'Structure',
                       value: '#${data.location.structureId}',
                     ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _Section(
-                title: 'Ship',
-                rows: [
-                  _Row(label: 'Name', value: data.ship.shipName),
+                  _Row(label: 'Ship', value: data.ship.shipName),
                   _Row(
-                    label: 'Type',
+                    label: 'Hull',
                     value: data.nameOf(data.ship.shipTypeId) ??
                         '#${data.ship.shipTypeId}',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            TypeDetailScreen(typeId: data.ship.shipTypeId),
+                      ),
+                    ),
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
+              _AttributesSection(characterId: characterId),
+              const SizedBox(height: 16),
+              _ImplantsSection(characterId: characterId),
             ],
           ),
         );
         },
       ),
+    );
+  }
+}
+
+class _AttributesSection extends ConsumerWidget {
+  const _AttributesSection({required this.characterId});
+  final int characterId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(characterAttributesProvider(characterId));
+    return async.when(
+      loading: () => const _Section(
+        title: 'Attributes',
+        rows: [_Row(label: '', value: 'Loading…')],
+      ),
+      error: (e, _) => _Section(
+        title: 'Attributes',
+        rows: [_Row(label: '', value: describeEsiError(e))],
+      ),
+      data: (a) {
+        final cooldown = a.accruedRemapCooldownDate;
+        final cooldownReady =
+            cooldown == null || cooldown.isBefore(DateTime.now());
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ATTRIBUTES',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        letterSpacing: 1.2,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                _AttributeRow(
+                  asset: 'assets/icons/attributes/Perception.png',
+                  label: 'Perception',
+                  value: a.perception,
+                ),
+                _AttributeRow(
+                  asset: 'assets/icons/attributes/Intelligence.png',
+                  label: 'Intelligence',
+                  value: a.intelligence,
+                ),
+                _AttributeRow(
+                  asset: 'assets/icons/attributes/Memory.png',
+                  label: 'Memory',
+                  value: a.memory,
+                ),
+                _AttributeRow(
+                  asset: 'assets/icons/attributes/Willpower.png',
+                  label: 'Willpower',
+                  value: a.willpower,
+                ),
+                _AttributeRow(
+                  asset: 'assets/icons/attributes/Charisma.png',
+                  label: 'Charisma',
+                  value: a.charisma,
+                ),
+                const Divider(height: 24),
+                _Row(label: 'Bonus remaps', value: '${a.bonusRemaps}'),
+                _Row(
+                  label: 'Next remap',
+                  value: cooldown == null
+                      ? 'Available now'
+                      : (cooldownReady
+                          ? 'Available now'
+                          : DateFormat('MMM d, yyyy')
+                              .format(cooldown.toLocal())),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AttributeRow extends StatelessWidget {
+  const _AttributeRow({
+    required this.asset,
+    required this.label,
+    required this.value,
+  });
+
+  final String asset;
+  final String label;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Image.asset(asset, width: 24, height: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+          Text(
+            '$value',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImplantsSection extends ConsumerWidget {
+  const _ImplantsSection({required this.characterId});
+  final int characterId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(characterImplantsProvider(characterId));
+    final db = ref.watch(typesDatabaseProvider);
+    return async.when(
+      loading: () => const _Section(
+        title: 'Implants',
+        rows: [_Row(label: '', value: 'Loading…')],
+      ),
+      error: (e, _) => _Section(
+        title: 'Implants',
+        rows: [_Row(label: '', value: describeEsiError(e))],
+      ),
+      data: (ids) {
+        if (ids.isEmpty) {
+          return const _Section(
+            title: 'Implants',
+            rows: [_Row(label: '', value: 'None plugged in')],
+          );
+        }
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'IMPLANTS',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        letterSpacing: 1.2,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                for (final id in ids)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => TypeDetailScreen(typeId: id),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          EveTypeImage(
+                            typeId: id,
+                            size: 28,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              db.lookup(id) ?? '#$id',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -141,14 +333,21 @@ class _Section extends StatelessWidget {
 }
 
 class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.value, this.valueColor});
+  const _Row({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.onTap,
+  });
   final String label;
   final String value;
   final Color? valueColor;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final colors = Theme.of(context).colorScheme;
+    final body = Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
@@ -166,14 +365,24 @@ class _Row extends StatelessWidget {
             child: Text(
               value,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: valueColor,
+                    color: onTap != null ? colors.primary : valueColor,
                     fontWeight:
                         valueColor != null ? FontWeight.w600 : null,
+                    decoration: onTap != null
+                        ? TextDecoration.underline
+                        : null,
+                    decorationColor:
+                        onTap != null ? colors.primary : null,
                   ),
             ),
           ),
+          if (onTap != null)
+            Icon(Icons.chevron_right,
+                size: 18, color: Theme.of(context).hintColor),
         ],
       ),
     );
+    if (onTap == null) return body;
+    return InkWell(onTap: onTap, child: body);
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/types/types_database_providers.dart';
 import 'data/character_repository.dart';
+import 'data/dto/character_attributes.dart';
 import 'data/dto/character_location.dart';
 import 'data/dto/character_portrait.dart';
 import 'data/dto/character_public_info.dart';
@@ -96,4 +97,14 @@ final characterSheetProvider =
     walletBalance: walletBalance,
     resolvedNames: resolved,
   );
+});
+
+final characterAttributesProvider =
+    FutureProvider.family<CharacterAttributes, int>((ref, characterId) {
+  return ref.watch(characterRepositoryProvider).fetchAttributes(characterId);
+});
+
+final characterImplantsProvider =
+    FutureProvider.family<List<int>, int>((ref, characterId) {
+  return ref.watch(characterRepositoryProvider).fetchImplants(characterId);
 });

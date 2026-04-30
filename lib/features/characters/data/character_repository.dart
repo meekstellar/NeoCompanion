@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:dio/dio.dart';
 
 import '../../../core/network/esi_client.dart';
+import 'dto/character_attributes.dart';
 import 'dto/character_location.dart';
 import 'dto/character_portrait.dart';
 import 'dto/character_public_info.dart';
@@ -48,6 +49,22 @@ class CharacterRepository {
       characterId: characterId,
     );
     return res.data!.toDouble();
+  }
+
+  Future<CharacterAttributes> fetchAttributes(int characterId) async {
+    final res = await _esi.get<Map<String, dynamic>>(
+      '/characters/$characterId/attributes/',
+      characterId: characterId,
+    );
+    return CharacterAttributes.fromJson(res.data!);
+  }
+
+  Future<List<int>> fetchImplants(int characterId) async {
+    final res = await _esi.get<List<dynamic>>(
+      '/characters/$characterId/implants/',
+      characterId: characterId,
+    );
+    return res.data!.map((e) => (e as num).toInt()).toList();
   }
 
   /// Batch-resolves IDs of characters/corps/alliances/types/systems to
