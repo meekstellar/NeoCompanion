@@ -5,9 +5,9 @@ import 'dart:io';
 import 'package:archive/archive_io.dart';
 import 'package:dio/dio.dart';
 import 'package:path/path.dart' as p;
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common/sqflite.dart';
 
-import 'types_database.dart';
+import 'sde_schema.dart';
 
 /// Static-data manifest published by CCP at
 /// https://developers.eveonline.com/static-data/tranquility/latest.jsonl —
@@ -51,6 +51,12 @@ class SdeImportProgress {
 
 /// Files we extract from the SDE zip. Everything else is skipped to
 /// keep on-device storage and import time reasonable.
+///
+/// `mapPlanets.jsonl`, `mapMoons.jsonl`, and `stationOperations.jsonl`
+/// are streamed only to compose station names — only a handful of
+/// fields per row are kept in RAM, then the data is discarded. The
+/// `mapMoons` file in particular is huge (200+ MB), so we never
+/// persist it to the output sqlite.
 const _wantedFiles = <String>[
   'types.jsonl',
   'groups.jsonl',
@@ -66,6 +72,10 @@ const _wantedFiles = <String>[
   'races.jsonl',
   'bloodlines.jsonl',
   'npcCorporations.jsonl',
+  'npcStations.jsonl',
+  'mapPlanets.jsonl',
+  'mapMoons.jsonl',
+  'stationOperations.jsonl',
 ];
 
 class SdeImporter {
@@ -110,7 +120,14 @@ class SdeImporter {
     if (await File(newDbPath).exists()) {
       await File(newDbPath).delete();
     }
-    final db = await openDatabase(newDbPath, version: 1);
+    // Use `databaseFactory` (from sqflite_common) instead of the
+    // top-level `openDatabase` so the importer also runs on plain Dart
+    // VM via sqflite_common_ffi (CLI / CI use case). Flutter wires the
+    // factory automatically when `package:sqflite` is imported.
+    final db = await databaseFactory.openDatabase(
+      newDbPath,
+      options: OpenDatabaseOptions(version: 1),
+    );
     try {
       // Speed knobs: turn off journaling/fsync for the duration of the
       // bulk import. The DB is throwaway until we rename it over the
@@ -186,13 +203,13 @@ class SdeImporter {
     // Per-file weights inside the importDb phase. Hand-tuned by relative
     // entry counts: types is the bulk, typeDogma also heavy.
     const weights = <String, double>{
-      'types.jsonl': 0.42,
+      'types.jsonl': 0.40,
       'groups.jsonl': 0.02,
       'categories.jsonl': 0.005,
       'marketGroups.jsonl': 0.02,
       'dogmaAttributes.jsonl': 0.02,
       'dogmaEffects.jsonl': 0.02,
-      'typeDogma.jsonl': 0.30,
+      'typeDogma.jsonl': 0.28,
       'mapRegions.jsonl': 0.005,
       'mapConstellations.jsonl': 0.01,
       'mapSolarSystems.jsonl': 0.10,
@@ -201,6 +218,7 @@ class SdeImporter {
       'bloodlines.jsonl': 0.005,
       'npcCorporations.jsonl': 0.02,
     };
+    const stationsWeight = 0.10;
     var done = 0.0;
     for (final entry in weights.entries) {
       final path = p.join(workDir, entry.key);
@@ -218,6 +236,16 @@ class SdeImporter {
         );
       });
     }
+    // Stations need to fuse data across npcStations + mapPlanets +
+    // mapMoons + stationOperations + already-imported corp & system
+    // translations. Done last so the dependency tables are populated.
+    yield* _importStationsPhase(db, workDir).map((delta) {
+      done += delta * stationsWeight;
+      return SdeImportProgress(
+        phase: SdeImportPhase.importDb,
+        fraction: done.clamp(0.0, 1.0),
+      );
+    });
   }
 
   /// Dispatches to the correct per-file importer. Yields fractional
@@ -285,7 +313,7 @@ class SdeImporter {
     await db.insert('meta',
         {'key': 'installed_at', 'value': DateTime.now().toIso8601String()});
     await db.insert('meta',
-        {'key': 'schema_version', 'value': '${TypesDatabase.schemaVersion}'});
+        {'key': 'schema_version', 'value': '$kSdeSchemaVersion'});
   }
 
   Future<void> _cleanup(String workDir, String zipPath) async {
@@ -769,6 +797,236 @@ Stream<double> _importNpcCorporations(
   }
   await flush();
   yield 1.0;
+}
+
+// ── Stations cross-file pass ────────────────────────────────────────
+
+class _MoonInfo {
+  const _MoonInfo({required this.orbitId, required this.orbitIndex});
+  final int orbitId; // planet id this moon orbits
+  final int orbitIndex; // moon number within the planet
+}
+
+/// Builds station rows + translations by streaming three large maps
+/// (mapPlanets, mapMoons, stationOperations) into compact in-memory
+/// indexes, then composing names like "Jita IV - Moon 4 - Caldari Navy
+/// Assembly Plant" per language. The huge `mapMoons.jsonl` (200+ MB) is
+/// read line-by-line and only `(orbitID, orbitIndex)` are kept; the
+/// rest is discarded so memory stays bounded.
+Stream<double> _importStationsPhase(Database db, String workDir) async* {
+  final planetsPath = p.join(workDir, 'mapPlanets.jsonl');
+  final moonsPath = p.join(workDir, 'mapMoons.jsonl');
+  final operationsPath = p.join(workDir, 'stationOperations.jsonl');
+  final stationsPath = p.join(workDir, 'npcStations.jsonl');
+  // If any input is missing (older SDE), skip silently. Stations table
+  // will be empty; UI falls back to "Unknown".
+  for (final path in [planetsPath, moonsPath, operationsPath, stationsPath]) {
+    if (!await File(path).exists()) {
+      yield 1.0;
+      return;
+    }
+  }
+
+  // Phase 1: planet celestial indexes (small, ~70k entries).
+  final planetCelestialIndex = <int, int>{};
+  await for (final entry in _streamJsonlEntries(planetsPath)) {
+    final ci = _asInt(entry.body['celestialIndex']);
+    if (ci != null) planetCelestialIndex[entry.id] = ci;
+  }
+  yield 0.10;
+
+  // Phase 2: moon orbit info. Largest file in the SDE; we keep two
+  // ints per moon (orbit id, orbit index) and discard the rest.
+  final moonOrbits = <int, _MoonInfo>{};
+  await for (final entry in _streamJsonlEntries(moonsPath)) {
+    final orbitId = _asInt(entry.body['orbitID']);
+    final orbitIndex = _asInt(entry.body['orbitIndex']);
+    if (orbitId != null && orbitIndex != null) {
+      moonOrbits[entry.id] = _MoonInfo(
+        orbitId: orbitId,
+        orbitIndex: orbitIndex,
+      );
+    }
+  }
+  yield 0.65; // moons dominate this pass
+
+  // Phase 3: station-operation names per language.
+  final operationNames = <int, Map<String, String>>{};
+  await for (final entry in _streamJsonlEntries(operationsPath)) {
+    final names = entry.body['operationName'];
+    if (names is Map) {
+      operationNames[entry.id] = {
+        for (final e in names.entries)
+          if (e.key is String && e.value is String)
+            e.key as String: e.value as String,
+      };
+    }
+  }
+
+  // Phase 4: pull translations we already imported into memory so we
+  // don't re-query for every single station.
+  final systemNames = await _readNameMapByLang(db, 'solar_system_translations',
+      'solar_system_id');
+  final corpNames =
+      await _readNameMapByLang(db, 'npc_corporation_translations', 'corporation_id');
+  yield 0.75;
+
+  // Phase 5: insert stations + translations.
+  Batch batch = db.batch();
+  var queued = 0;
+  Future<void> flush() async {
+    if (queued == 0) return;
+    await batch.commit(noResult: true);
+    batch = db.batch();
+    queued = 0;
+  }
+
+  await for (final entry in _streamJsonlEntries(stationsPath)) {
+    final m = entry.body;
+    final solarSystemId = _asInt(m['solarSystemID']);
+    if (solarSystemId == null) continue;
+    final orbitId = _asInt(m['orbitID']);
+    final ownerId = _asInt(m['ownerID']);
+    final operationId = _asInt(m['operationID']);
+    final typeId = _asInt(m['typeID']);
+
+    // Resolve orbit chain: station orbits a moon (which orbits a
+    // planet) or a planet directly.
+    int? planetId;
+    int? moonNumber;
+    if (orbitId != null) {
+      final moon = moonOrbits[orbitId];
+      if (moon != null) {
+        moonNumber = moon.orbitIndex;
+        planetId = moon.orbitId;
+      } else {
+        planetId = orbitId;
+      }
+    }
+    final celestialIndex =
+        planetId != null ? planetCelestialIndex[planetId] : null;
+
+    batch.insert('stations', {
+      'id': entry.id,
+      'solar_system_id': solarSystemId,
+      'type_id': typeId,
+      'owner_id': ownerId,
+      'operation_id': operationId,
+    });
+    queued++;
+
+    for (final lang in sdeLanguages) {
+      final name = _composeStationName(
+        lang: lang,
+        systemNames: systemNames,
+        corpNames: corpNames,
+        operationNames: operationNames,
+        solarSystemId: solarSystemId,
+        celestialIndex: celestialIndex,
+        moonNumber: moonNumber,
+        ownerId: ownerId,
+        operationId: operationId,
+      );
+      batch.insert('station_translations', {
+        'station_id': entry.id,
+        'lang': lang,
+        'name': name,
+      });
+      queued++;
+    }
+    if (queued >= 1000) await flush();
+  }
+  await flush();
+  yield 1.0;
+}
+
+String _composeStationName({
+  required String lang,
+  required Map<int, Map<String, String>> systemNames,
+  required Map<int, Map<String, String>> corpNames,
+  required Map<int, Map<String, String>> operationNames,
+  required int solarSystemId,
+  int? celestialIndex,
+  int? moonNumber,
+  int? ownerId,
+  int? operationId,
+}) {
+  String pick(Map<int, Map<String, String>> src, int? id) {
+    if (id == null) return '';
+    final byLang = src[id];
+    if (byLang == null) return '';
+    return byLang[lang] ?? byLang['en'] ?? '';
+  }
+
+  final system = pick(systemNames, solarSystemId);
+  final corp = pick(corpNames, ownerId);
+  final operation = pick(operationNames, operationId);
+
+  final buf = StringBuffer(system);
+  if (celestialIndex != null) {
+    buf.write(' ${_romanNumeral(celestialIndex)}');
+  }
+  if (moonNumber != null) {
+    buf.write(' - Moon $moonNumber');
+  }
+  if (corp.isNotEmpty || operation.isNotEmpty) {
+    buf.write(' - ');
+    if (corp.isNotEmpty) buf.write(corp);
+    if (corp.isNotEmpty && operation.isNotEmpty) buf.write(' ');
+    if (operation.isNotEmpty) buf.write(operation);
+  }
+  return buf.toString();
+}
+
+/// Bulk-loads `id → {lang: name}` for one of the `*_translations`
+/// tables so the station-name pass doesn't issue 5k×N queries.
+Future<Map<int, Map<String, String>>> _readNameMapByLang(
+  Database db,
+  String table,
+  String idColumn,
+) async {
+  final rows = await db.query(
+    table,
+    columns: [idColumn, 'lang', 'name'],
+    where: 'name IS NOT NULL',
+  );
+  final out = <int, Map<String, String>>{};
+  for (final r in rows) {
+    final id = (r[idColumn] as num).toInt();
+    final lang = r['lang'] as String;
+    final name = r['name'] as String;
+    out.putIfAbsent(id, () => <String, String>{})[lang] = name;
+  }
+  return out;
+}
+
+const _romanLookup = <(int, String)>[
+  (1000, 'M'),
+  (900, 'CM'),
+  (500, 'D'),
+  (400, 'CD'),
+  (100, 'C'),
+  (90, 'XC'),
+  (50, 'L'),
+  (40, 'XL'),
+  (10, 'X'),
+  (9, 'IX'),
+  (5, 'V'),
+  (4, 'IV'),
+  (1, 'I'),
+];
+
+String _romanNumeral(int n) {
+  if (n < 1 || n >= 4000) return '$n';
+  var remaining = n;
+  final buf = StringBuffer();
+  for (final (value, symbol) in _romanLookup) {
+    while (remaining >= value) {
+      buf.write(symbol);
+      remaining -= value;
+    }
+  }
+  return buf.toString();
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────

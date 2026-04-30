@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path/path.dart' as p;
 
-import 'sde_importer.dart';
+import 'prebuilt_sde_fetcher.dart';
 import 'types_database.dart';
 
 /// Single-percentage progress event surfaced to the UI.
@@ -14,17 +14,19 @@ class TypesDatabaseProgress {
   final double fraction;
 }
 
-/// Drives a full SDE refresh: downloads the latest archive from CCP,
-/// imports the relevant YAMLs into a sibling SQLite file, and swaps it
-/// over the live one. Emits [TypesDatabaseProgress] for the popup.
+/// Drives a full SDE refresh: pulls the prebuilt SQLite produced by our
+/// CI from the GitHub Releases CDN, verifies sha256, extracts it next to
+/// the live DB, and swaps. The on-device YAML→SQLite import that used to
+/// live here is now done once on CI; see `tool/build_sde.dart`.
 class TypesDatabaseUpdater {
   TypesDatabaseUpdater({
     required Dio dio,
     required TypesDatabase database,
-  })  : _importer = SdeImporter(dio: dio),
+    PrebuiltSdeFetcher? fetcher,
+  })  : _fetcher = fetcher ?? PrebuiltSdeFetcher(dio: dio),
         _database = database;
 
-  final SdeImporter _importer;
+  final PrebuiltSdeFetcher _fetcher;
   final TypesDatabase _database;
 
   Stream<TypesDatabaseProgress> update() async* {
@@ -36,9 +38,10 @@ class TypesDatabaseUpdater {
     final workDir = p.join(p.dirname(dbPath), 'sde_work');
     await Directory(workDir).create(recursive: true);
 
-    await for (final progress in _importer.run(
+    await for (final progress in _fetcher.run(
       workDir: workDir,
       currentDbPath: dbPath,
+      localSchemaVersion: kSdeSchemaVersion,
     )) {
       yield TypesDatabaseProgress(progress.overall);
     }

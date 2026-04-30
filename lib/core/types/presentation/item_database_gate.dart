@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../network/esi_error_message.dart';
+import '../sde_error_message.dart';
 import '../types_database_providers.dart';
 import '../types_database_updater.dart';
 
@@ -116,7 +116,7 @@ class _DialogContentState extends ConsumerState<_DialogContent> {
     _sub = updater.update().listen(
       (p) => setState(() => _progress = p),
       onError: (Object e) => setState(() {
-        _error = describeEsiError(e);
+        _error = describeSdeError(e);
         _running = false;
       }),
       onDone: () => setState(() => _running = false),

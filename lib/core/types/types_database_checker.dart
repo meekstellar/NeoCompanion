@@ -1,28 +1,29 @@
 import 'package:dio/dio.dart';
 
-import 'sde_importer.dart';
+import 'prebuilt_sde_fetcher.dart';
 import 'types_database.dart';
 
-/// Polls CCP's `latest.jsonl` to learn the current SDE build number,
-/// compares against the locally-installed one, and answers whether the
-/// app is up to date.
+/// Polls our prebuilt-SDE manifest (published by CI to GitHub Releases)
+/// to learn the current build number, compares against the locally
+/// installed one, and answers whether the app is up to date.
 class TypesDatabaseChecker {
   TypesDatabaseChecker({
     required TypesDatabase database,
     Dio? dio,
+    PrebuiltSdeFetcher? fetcher,
   })  : _database = database,
-        _importer = SdeImporter(dio: dio ?? Dio());
+        _fetcher = fetcher ?? PrebuiltSdeFetcher(dio: dio ?? Dio());
 
   final TypesDatabase _database;
-  final SdeImporter _importer;
+  final PrebuiltSdeFetcher _fetcher;
 
-  /// `true` when the local DB matches CCP's current build, `false` when
-  /// an update is available. Errors propagate so callers can keep the
-  /// banner hidden on transient network failure.
+  /// `true` when the local DB matches the published manifest's build,
+  /// `false` when an update is available. Errors propagate so callers
+  /// can keep the banner hidden on transient network failure.
   Future<bool> isFresh() async {
     final installed = _database.buildNumber;
     if (installed == null) return false;
-    final manifest = await _importer.fetchManifest();
+    final manifest = await _fetcher.fetchManifest();
     return manifest.buildNumber <= installed;
   }
 }
