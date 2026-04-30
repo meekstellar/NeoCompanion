@@ -49,7 +49,7 @@ class _WalletJournalScreenState extends ConsumerState<WalletJournalScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
           child: Row(
             children: [
               Expanded(

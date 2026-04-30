@@ -72,7 +72,7 @@ class JumpClonesScreen extends ConsumerWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
       children: cards,
     );
   }

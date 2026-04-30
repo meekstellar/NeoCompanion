@@ -49,7 +49,7 @@ class _CharacterListScreenState extends ConsumerState<CharacterListScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              padding: const EdgeInsets.fromLTRB(12, 16, 16, 12),
               child: Text(
                 'Characters',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -65,7 +65,7 @@ class _CharacterListScreenState extends ConsumerState<CharacterListScreen> {
                 data: (list) {
                   if (list.isEmpty) return const _EmptyState();
                   return ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
                     itemCount: list.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, i) => _CharacterCard(

@@ -75,7 +75,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
           child: TextField(
             controller: _filter,
             onChanged: (_) => setState(() {}),
@@ -88,7 +88,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Row(
             children: [
               Text(

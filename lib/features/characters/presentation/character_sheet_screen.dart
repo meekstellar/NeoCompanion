@@ -55,7 +55,7 @@ class CharacterSheetScreen extends ConsumerWidget {
           onRefresh: () async =>
               ref.invalidate(characterSheetProvider(characterId)),
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
             children: [
               _ScopeUpgradeBanner(characterId: characterId),
               _HeaderCard(data: data),

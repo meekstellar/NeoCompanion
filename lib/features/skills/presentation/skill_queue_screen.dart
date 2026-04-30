@@ -83,7 +83,7 @@ class _SkillQueueScreenState extends ConsumerState<SkillQueueScreen> {
     final remaining = _calc.queueTimeRemaining(data.queue, _now);
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
       itemCount: data.queue.length + 1,
       itemBuilder: (context, i) {
         if (i == 0) {
