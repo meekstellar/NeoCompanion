@@ -16,6 +16,7 @@ const eveMvpScopes = <String>[
   'esi-contracts.read_character_contracts.v1',
   'esi-industry.read_character_jobs.v1',
   'esi-planets.manage_planets.v1',
+  'esi-characters.read_loyalty.v1',
   // Required by `/universe/structures/{id}/` so the app can resolve
   // names of player citadels the character has docking access to
   // (otherwise the endpoint 403s on every request and assets,

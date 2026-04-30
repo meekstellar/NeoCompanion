@@ -14,6 +14,7 @@ import '../../clones/presentation/jump_clones_screen.dart';
 import '../../contracts/presentation/contracts_screen.dart';
 import '../../fittings/presentation/fittings_screen.dart';
 import '../../industry/presentation/industry_jobs_screen.dart';
+import '../../loyalty/presentation/loyalty_points_screen.dart';
 import '../../planets/presentation/planetary_colonies_screen.dart';
 import '../../mail/presentation/mail_screen.dart';
 import '../../market/presentation/market_orders_screen.dart';
@@ -113,6 +114,16 @@ class CharacterSheetScreen extends ConsumerWidget {
                       MaterialPageRoute<void>(
                         builder: (_) =>
                             FittingsScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/LoyaltyPoints.png',
+                    title: 'Loyalty Points',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            LoyaltyPointsScreen(characterId: characterId),
                       ),
                     ),
                   ),
