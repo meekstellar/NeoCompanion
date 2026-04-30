@@ -29,9 +29,14 @@ class LocationResolver {
   final CharacterRepository character;
   final int characterId;
 
-  /// IDs at or above this value are player-anchored structures;
-  /// anything below is in the public-id space (`/universe/names/`).
-  static const int structureIdThreshold = 100000000;
+  /// Player-anchored structures (citadels, refineries, …) get ids
+  /// allocated from the 1e12+ range. Below that lives the public-id
+  /// space (NPC stations 60M-66M, characters/corps/alliances under
+  /// 100M, systems 30M-31M, …) which `/universe/names/` handles.
+  /// Earlier we used 1e8, but that threw NPC station resolution at
+  /// the structure endpoint instead of `/universe/names/` and
+  /// occasionally tagged unrelated mid-range ids as structures.
+  static const int structureIdThreshold = 1000000000000;
 
   Future<Map<int, String>> resolve(Iterable<int> ids) async {
     final out = <int, String>{};

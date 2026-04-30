@@ -14,4 +14,9 @@ const eveMvpScopes = <String>[
   'esi-markets.read_character_orders.v1',
   'esi-mail.read_mail.v1',
   'esi-contracts.read_character_contracts.v1',
+  // Required by `/universe/structures/{id}/` so the app can resolve
+  // names of player citadels the character has docking access to
+  // (otherwise the endpoint 403s on every request and assets,
+  // contracts, market orders and clones in citadels show "Unknown").
+  'esi-universe.read_structures.v1',
 ];
