@@ -8,6 +8,7 @@ import '../../../core/auth/scope_compatibility.dart';
 import '../../../core/auth/sso_scopes.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../../core/types/presentation/item_database_screen.dart';
+import '../../assets/asset_providers.dart';
 import '../../assets/presentation/assets_screen.dart';
 import '../../clones/presentation/jump_clones_screen.dart';
 import '../../fittings/presentation/fittings_screen.dart';
@@ -26,6 +27,11 @@ class CharacterSheetScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sheet = ref.watch(characterSheetProvider(characterId));
+    // Background prefetch of the slow per-character endpoints so the
+    // dedicated screens open instantly. ref.listen subscribes for this
+    // screen's lifetime, which keeps the providers' cached values
+    // around even between visits.
+    ref.listen(assetsProvider(characterId), (_, _) {});
     return Scaffold(
       appBar: AppBar(
         title: sheet.maybeWhen(
