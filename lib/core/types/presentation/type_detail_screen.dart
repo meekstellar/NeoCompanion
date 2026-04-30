@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../types_database.dart';
 import '../types_database_providers.dart';
 import 'eve_type_image.dart';
+import 'html_description.dart';
 
 /// Detail page for any inventory type — items, ships, skills. Pulls
 /// description, dogma attributes and required skills from the local SDE.
@@ -80,8 +81,8 @@ class _TypeDetailScreenState extends ConsumerState<TypeDetailScreen> {
                   detail.description!.trim().isNotEmpty) ...[
                 _Section(
                   title: 'Description',
-                  child: Text(
-                    detail.description!,
+                  child: HtmlDescription(
+                    html: detail.description!,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ),

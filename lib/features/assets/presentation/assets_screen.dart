@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/network/esi_error_message.dart';
 import '../../../core/types/presentation/eve_type_image.dart';
+import '../../../core/types/presentation/type_detail_screen.dart';
 import '../asset_providers.dart';
 import '../data/dto/asset_item.dart';
 
@@ -172,42 +173,49 @@ class _AssetRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final qty = item.quantity;
     final qtyText = qty > 1 ? NumberFormat('#,##0', 'en_US').format(qty) : '';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          EveTypeImage(
-            typeId: item.typeId,
-            size: 32,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              typeName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TypeDetailScreen(typeId: item.typeId),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            EveTypeImage(
+              typeId: item.typeId,
+              size: 32,
+              borderRadius: BorderRadius.circular(4),
             ),
-          ),
-          if (item.isBlueprintCopy)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
+            const SizedBox(width: 12),
+            Expanded(
               child: Text(
-                'BPC',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.tertiary,
-                    ),
+                typeName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-          if (qtyText.isNotEmpty)
-            Text(
-              '×$qtyText',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Theme.of(context).hintColor),
-            ),
-        ],
+            if (item.isBlueprintCopy)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(
+                  'BPC',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.tertiary,
+                      ),
+                ),
+              ),
+            if (qtyText.isNotEmpty)
+              Text(
+                '×$qtyText',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Theme.of(context).hintColor),
+              ),
+          ],
+        ),
       ),
     );
   }
