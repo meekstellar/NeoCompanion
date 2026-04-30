@@ -46,7 +46,13 @@ Future<void> main(List<String> rawArgs) async {
     return;
   }
 
-  final outDir = Directory(args['out'] as String);
+  // Normalize to an absolute path before doing anything else.
+  // `sqflite_common_ffi` opens databases on a background isolate whose
+  // current-directory isn't guaranteed to match the main isolate's, so
+  // a relative `--out` like `build/sde` resolves to a different
+  // location on the importer side and the rename below fails (only
+  // visible on CI — running locally with an absolute --out hides it).
+  final outDir = Directory(p.absolute(args['out'] as String));
   await outDir.create(recursive: true);
 
   // Wire FFI sqlite as the global factory so the existing importer (which
