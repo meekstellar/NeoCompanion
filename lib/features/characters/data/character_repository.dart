@@ -8,6 +8,7 @@ import 'dto/character_location.dart';
 import 'dto/character_portrait.dart';
 import 'dto/character_public_info.dart';
 import 'dto/character_ship.dart';
+import 'dto/structure_info.dart';
 import 'dto/universe_name.dart';
 
 class CharacterRepository {
@@ -98,6 +99,41 @@ class CharacterRepository {
       await _resolveChunk(ids.sublist(0, mid), out);
       await _resolveChunk(ids.sublist(mid), out);
     }
+  }
+
+  /// Resolves a single player-anchored structure (citadel) via the
+  /// authorized `/universe/structures/{id}/` endpoint. Returns null on
+  /// 403 (no docking access — common for foreign citadels) or 404
+  /// (already deleted). Other Dio errors propagate.
+  Future<StructureInfo?> fetchStructure(int characterId, int structureId) async {
+    try {
+      final res = await _esi.get<Map<String, dynamic>>(
+        '/universe/structures/$structureId/',
+        characterId: characterId,
+      );
+      return StructureInfo.fromJson(structureId, res.data!);
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 403 || code == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// Resolves many structures in parallel. Per-id failures (no access,
+  /// gone) become absent map entries instead of taking down the batch.
+  Future<Map<int, StructureInfo>> fetchStructures(
+      int characterId, List<int> structureIds) async {
+    if (structureIds.isEmpty) return const {};
+    final results = await Future.wait([
+      for (final id in structureIds)
+        fetchStructure(characterId, id).then<StructureInfo?>((s) => s,
+            onError: (_) => null),
+    ]);
+    final out = <int, StructureInfo>{};
+    for (final s in results) {
+      if (s != null) out[s.structureId] = s;
+    }
+    return out;
   }
 
   /// Reverse of [resolveNames]: maps human-readable names to type/system/etc

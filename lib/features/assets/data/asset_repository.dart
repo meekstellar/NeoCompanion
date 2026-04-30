@@ -35,6 +35,56 @@ class AssetRepository {
       xPages: res.headers.value('x-pages'),
     );
   }
+
+  /// Resolves player-set names for the given singleton item ids via
+  /// `POST /characters/{id}/assets/names/`. ESI caps each request at 1000
+  /// ids, so [itemIds] is chunked and sent in parallel. Items the player
+  /// hasn't renamed come back as "None" — those are dropped.
+  Future<Map<int, String>> fetchNames(
+      int characterId, List<int> itemIds) async {
+    if (itemIds.isEmpty) return const {};
+    const chunkSize = 1000;
+    final chunks = <List<int>>[
+      for (var i = 0; i < itemIds.length; i += chunkSize)
+        itemIds.sublist(
+            i, i + chunkSize > itemIds.length ? itemIds.length : i + chunkSize),
+    ];
+    final results = await Future.wait(chunks.map((chunk) => _fetchNamesChunk(
+          characterId,
+          chunk,
+        )));
+    final out = <int, String>{};
+    for (final m in results) {
+      out.addAll(m);
+    }
+    return out;
+  }
+
+  Future<Map<int, String>> _fetchNamesChunk(
+      int characterId, List<int> itemIds) async {
+    try {
+      final res = await _esi.post<List<dynamic>>(
+        '/characters/$characterId/assets/names/',
+        characterId: characterId,
+        data: itemIds,
+      );
+      final out = <int, String>{};
+      for (final raw in res.data ?? const []) {
+        final m = (raw as Map).cast<String, dynamic>();
+        final id = (m['item_id'] as num?)?.toInt();
+        final name = m['name'] as String?;
+        if (id == null || name == null || name.isEmpty || name == 'None') {
+          continue;
+        }
+        out[id] = name;
+      }
+      return out;
+    } catch (_) {
+      // A single chunk failing shouldn't take down the whole batch — names
+      // are nice-to-have, not required to render assets.
+      return const {};
+    }
+  }
 }
 
 class _PageResult {
