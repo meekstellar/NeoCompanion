@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/locations/location_providers.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/types/types_database_providers.dart';
 import 'data/character_repository.dart';
@@ -37,6 +38,7 @@ final characterSheetProvider =
     FutureProvider.family<CharacterSheetData, int>((ref, characterId) async {
   ref.watch(typesDatabaseRevisionProvider);
   final repo = ref.watch(characterRepositoryProvider);
+  final resolver = ref.watch(locationResolverProvider(characterId));
   final typesDb = ref.watch(typesDatabaseProvider);
 
   final results = await Future.wait([
@@ -55,39 +57,31 @@ final characterSheetProvider =
 
   final resolved = <int, String>{};
 
-  // Resolve everything we can from the local SDE before going to the
-  // network. Solar systems and inventory types live there; faction
-  // names too, when ESI returns one.
+  // Things only the SDE can name (factions, NPC corps, inventory
+  // types) — the location resolver doesn't know about these.
   void tryLocal(int? id, String? Function(int) lookup) {
     if (id == null) return;
     final name = lookup(id);
     if (name != null) resolved[id] = name;
   }
 
-  tryLocal(location.solarSystemId, typesDb.lookupSystem);
   tryLocal(ship.shipTypeId, typesDb.lookup);
   tryLocal(publicInfo.factionId, typesDb.lookupFaction);
   tryLocal(publicInfo.corporationId, typesDb.lookupNpcCorporation);
 
-  // Player-owned structures need the dedicated /universe/structures/{id}/
-  // endpoint (auth required); skip them in MVP and resolve only the IDs
-  // that /universe/names/ can answer for.
-  final remaining = <int>{
+  // Anything that could be a station, citadel, or system goes through
+  // the shared resolver: local SDE first (system, NPC station), then
+  // /universe/names/ for ids < 100M and /universe/structures/{id}/ for
+  // citadels (≥ 100M).
+  final toResolve = <int>{
+    location.solarSystemId,
+    if (location.stationId != null) location.stationId!,
+    if (location.structureId != null) location.structureId!,
     publicInfo.corporationId,
     if (publicInfo.allianceId != null) publicInfo.allianceId!,
-    if (location.stationId != null) location.stationId!,
-  }.where((id) => !resolved.containsKey(id)).toList();
+  }..removeAll(resolved.keys);
 
-  if (remaining.isNotEmpty) {
-    try {
-      final names = await repo.resolveNames(remaining);
-      for (final n in names) {
-        resolved[n.id] = n.name;
-      }
-    } catch (_) {
-      // Name resolution is non-essential — render IDs if it fails.
-    }
-  }
+  resolved.addAll(await resolver.resolve(toResolve));
 
   return CharacterSheetData(
     publicInfo: publicInfo,

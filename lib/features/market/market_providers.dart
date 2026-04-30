@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/locations/location_providers.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/types/types_database_providers.dart';
-import '../characters/character_providers.dart';
 import 'data/dto/market_order.dart';
 import 'data/market_repository.dart';
 
@@ -26,7 +26,7 @@ final marketOrdersProvider =
     FutureProvider.family<MarketOrdersData, int>((ref, characterId) async {
   ref.watch(typesDatabaseRevisionProvider);
   final market = ref.watch(marketRepositoryProvider);
-  final character = ref.watch(characterRepositoryProvider);
+  final resolver = ref.watch(locationResolverProvider(characterId));
   final typesDb = ref.watch(typesDatabaseProvider);
 
   final orders = await market.fetchOpenOrders(characterId);
@@ -37,30 +37,8 @@ final marketOrdersProvider =
     if (n != null) typeNames[o.typeId] = n;
   }
 
-  // Most order locations are stations or structures, but a few are
-  // solar systems (citadels in space). Resolve those locally first;
-  // anything left over goes to /universe/names/.
-  final locationIds = {for (final o in orders) o.locationId}.toList();
-  final locationNames = <int, String>{};
-  final unresolved = <int>[];
-  for (final id in locationIds) {
-    final local = typesDb.lookupSystem(id);
-    if (local != null) {
-      locationNames[id] = local;
-    } else {
-      unresolved.add(id);
-    }
-  }
-  if (unresolved.isNotEmpty) {
-    try {
-      final resolved = await character.resolveNames(unresolved);
-      for (final n in resolved) {
-        locationNames[n.id] = n.name;
-      }
-    } catch (_) {
-      // Player structures keep their raw ID.
-    }
-  }
+  final locationNames =
+      await resolver.resolve({for (final o in orders) o.locationId});
 
   return MarketOrdersData(
     orders: orders,
