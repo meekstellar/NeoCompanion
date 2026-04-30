@@ -327,11 +327,25 @@ class _TrainingChip extends StatelessWidget {
 
     return _Pill(
       background: colors.surfaceContainerHigh,
-      child: Text(
-        '$name $level  $remaining',
-        style: Theme.of(context).textTheme.bodyMedium,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$name $level',
+            style: Theme.of(context).textTheme.bodyMedium,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            remaining,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+          ),
+        ],
       ),
     );
   }
