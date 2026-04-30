@@ -6,6 +6,11 @@ import '../types_database_providers.dart';
 import 'eve_type_image.dart';
 import 'type_detail_screen.dart';
 
+/// Browse the in-game market hierarchy as a single inline tree.
+/// Empty search renders the tree (lazy: each [ExpansionTile] only
+/// builds its children on first expand). A non-empty query switches
+/// to a flat list of matching types — when a player is hunting for a
+/// specific name they don't want to drill the tree, they want results.
 class ItemDatabaseScreen extends ConsumerStatefulWidget {
   const ItemDatabaseScreen({super.key});
 
@@ -49,7 +54,7 @@ class _ItemDatabaseScreenState extends ConsumerState<ItemDatabaseScreen> {
             ),
             Expanded(
               child: _query.trim().isEmpty
-                  ? _MarketBrowser(db: db, parentId: null)
+                  ? _MarketTree(db: db)
                   : _SearchResults(db: db, query: _query),
             ),
           ],
@@ -86,178 +91,151 @@ class _ItemDatabaseScreenState extends ConsumerState<ItemDatabaseScreen> {
   }
 }
 
-/// Recursively-navigable view of the in-game market hierarchy. Pass
-/// `null` for the root (top-level market groups), or a market group ID
-/// to show its children + types directly attached to it.
-class MarketBrowserScreen extends ConsumerStatefulWidget {
-  const MarketBrowserScreen({super.key, required this.parentId});
-  final int parentId;
-
-  @override
-  ConsumerState<MarketBrowserScreen> createState() =>
-      _MarketBrowserScreenState();
-}
-
-class _MarketBrowserScreenState extends ConsumerState<MarketBrowserScreen> {
-  String _query = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final db = ref.watch(typesDatabaseProvider);
-    final title = db.lookupMarketGroup(widget.parentId) ?? 'Group';
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: AnimatedBuilder(
-        animation: db,
-        builder: (context, _) => Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: TextField(
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: 'Search in this group',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (v) => setState(() => _query = v),
-              ),
-            ),
-            Expanded(
-              child: _MarketBrowser(
-                db: db,
-                parentId: widget.parentId,
-                query: _query,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Lists subgroups + types directly attached to [parentId]. Used by
-/// both the root entry on the item database screen (parentId = null)
-/// and the dedicated [MarketBrowserScreen].
-class _MarketBrowser extends StatelessWidget {
-  const _MarketBrowser({
-    required this.db,
-    required this.parentId,
-    this.query = '',
-  });
-
+/// Top-level market tree: one tile per root market group plus an
+/// "Other" entry that bridges to the orphan-types fallback.
+class _MarketTree extends StatelessWidget {
+  const _MarketTree({required this.db});
   final TypesDatabase db;
-  final int? parentId;
-  final String query;
 
   @override
   Widget build(BuildContext context) {
-    final q = query.trim().toLowerCase();
-    final children = db.marketGroupChildren(parentId);
-    final groupRows = <(int id, String name, int totalCount)>[];
-    for (final id in children) {
-      final name = db.lookupMarketGroup(id) ?? '#$id';
-      if (q.isNotEmpty && !name.toLowerCase().contains(q)) continue;
-      groupRows.add((id, name, _subtreeCount(db, id)));
-    }
-    groupRows.sort((a, b) => a.$2.compareTo(b.$2));
-
-    final typeRows = <MapEntry<int, String>>[];
-    if (parentId != null) {
-      for (final tid in db.typesInMarketGroup(parentId!)) {
-        final name = db.lookup(tid);
-        if (name == null) continue;
-        if (q.isNotEmpty && !name.toLowerCase().contains(q)) continue;
-        typeRows.add(MapEntry(tid, name));
-      }
-      typeRows.sort((a, b) => a.value.compareTo(b.value));
-    }
-
-    final showOtherPseudo = parentId == null && q.isEmpty;
-
-    if (groupRows.isEmpty && typeRows.isEmpty && !showOtherPseudo) {
-      return Center(
-        child: Text(
-          'No matches',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      );
-    }
-
-    return ListView.builder(
-      itemCount: groupRows.length +
-          typeRows.length +
-          (showOtherPseudo ? 1 : 0),
-      itemBuilder: (context, i) {
-        if (i < groupRows.length) {
-          final g = groupRows[i];
-          return ListTile(
-            title: Text(g.$2),
-            subtitle: Text('${g.$3} items'),
+    final roots = db.marketGroupChildren(null).toList()
+      ..sort((a, b) => (db.lookupMarketGroup(a) ?? '')
+          .compareTo(db.lookupMarketGroup(b) ?? ''));
+    return ListView(
+      children: [
+        for (final groupId in roots)
+          _GroupNode(db: db, groupId: groupId, depth: 0),
+        if (db.typesWithoutMarketGroup.isNotEmpty)
+          ListTile(
+            title: const Text('Other'),
+            subtitle: Text('${db.typesWithoutMarketGroup.length} items'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => MarketBrowserScreen(parentId: g.$1),
+                builder: (_) => const _OtherCategoriesScreen(),
               ),
             ),
-          );
-        }
-        if (i < groupRows.length + typeRows.length) {
-          final e = typeRows[i - groupRows.length];
-          return _TypeRow(typeId: e.key, name: e.value);
-        }
-        // "Other" pseudo-entry at the root.
-        return ListTile(
-          title: const Text('Other'),
-          subtitle: Text('${db.typesWithoutMarketGroup.length} items'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => const _OtherCategoriesScreen(),
-            ),
           ),
-        );
-      },
+      ],
     );
-  }
-
-  /// Total type count under [groupId] (its types + types of all
-  /// descendants). Cached only implicitly via Dart Map performance.
-  static int _subtreeCount(TypesDatabase db, int groupId) {
-    var total = db.typesInMarketGroup(groupId).length;
-    for (final child in db.marketGroupChildren(groupId)) {
-      total += _subtreeCount(db, child);
-    }
-    return total;
   }
 }
 
+/// One market-group node. Renders an [ExpansionTile] whose children
+/// — child groups and types directly attached to this group — only
+/// build when the user expands it. That keeps the initial paint cheap
+/// no matter how deep the tree is.
+class _GroupNode extends StatelessWidget {
+  const _GroupNode({
+    required this.db,
+    required this.groupId,
+    required this.depth,
+  });
+
+  final TypesDatabase db;
+  final int groupId;
+  final int depth;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = db.lookupMarketGroup(groupId) ?? '#$groupId';
+    final total = db.marketGroupSubtreeCount(groupId);
+    final indent = 16.0 + depth * 16;
+    return ExpansionTile(
+      tilePadding: EdgeInsets.fromLTRB(indent, 0, 16, 0),
+      childrenPadding: EdgeInsets.zero,
+      title: Text(name),
+      subtitle: Text('$total items'),
+      children: [_ExpandedGroupBody(db: db, groupId: groupId, depth: depth)],
+    );
+  }
+}
+
+/// Pulled out so the (potentially expensive) children-list construction
+/// only runs once the parent [ExpansionTile] expands; the tile itself
+/// builds even when collapsed.
+class _ExpandedGroupBody extends StatelessWidget {
+  const _ExpandedGroupBody({
+    required this.db,
+    required this.groupId,
+    required this.depth,
+  });
+
+  final TypesDatabase db;
+  final int groupId;
+  final int depth;
+
+  @override
+  Widget build(BuildContext context) {
+    final subgroups = db.marketGroupChildren(groupId).toList()
+      ..sort((a, b) => (db.lookupMarketGroup(a) ?? '')
+          .compareTo(db.lookupMarketGroup(b) ?? ''));
+    final types = [
+      for (final tid in db.typesInMarketGroup(groupId))
+        if (db.lookup(tid) != null) (id: tid, name: db.lookup(tid)!),
+    ]..sort((a, b) => a.name.compareTo(b.name));
+
+    return Column(
+      children: [
+        for (final sgId in subgroups)
+          _GroupNode(db: db, groupId: sgId, depth: depth + 1),
+        for (final t in types)
+          _TypeRow(typeId: t.id, name: t.name, depth: depth + 1),
+      ],
+    );
+  }
+}
+
+/// Flat result list, capped to keep substring scans on the 30k-entry
+/// hot-cache snappy. Sorted by name; at 200 hits the user is well
+/// served by adding more characters to the query.
 class _SearchResults extends StatelessWidget {
   const _SearchResults({required this.db, required this.query});
   final TypesDatabase db;
   final String query;
 
+  static const int _limit = 200;
+
   @override
   Widget build(BuildContext context) {
     final q = query.trim().toLowerCase();
-    final filtered = db.entries
-        .where((e) => e.value.toLowerCase().contains(q))
-        .toList(growable: false)
-      ..sort((a, b) => a.value.compareTo(b.value));
+    final hits = <MapEntry<int, String>>[];
+    for (final e in db.entries) {
+      if (e.value.toLowerCase().contains(q)) {
+        hits.add(e);
+        if (hits.length >= _limit + 1) break;
+      }
+    }
+    final truncated = hits.length > _limit;
+    if (truncated) hits.removeLast();
+    hits.sort((a, b) => a.value.compareTo(b.value));
 
-    if (filtered.isEmpty) {
+    if (hits.isEmpty) {
       return Center(
-        child: Text(
-          'No matches',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        child: Text('No matches',
+            style: Theme.of(context).textTheme.bodySmall),
       );
     }
     return ListView.builder(
-      itemCount: filtered.length,
-      itemBuilder: (_, i) =>
-          _TypeRow(typeId: filtered[i].key, name: filtered[i].value),
+      itemCount: hits.length + (truncated ? 1 : 0),
+      itemBuilder: (_, i) {
+        if (i == hits.length) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'Showing first $_limit matches — refine the search to see more.',
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
+        return _TypeRow(
+          typeId: hits[i].key,
+          name: hits[i].value,
+          depth: 0,
+        );
+      },
     );
   }
 }
@@ -425,6 +403,7 @@ class _OtherCategoryItemsScreenState
                         itemBuilder: (_, i) => _TypeRow(
                           typeId: filtered[i].key,
                           name: filtered[i].value,
+                          depth: 0,
                         ),
                       ),
               ),
@@ -437,14 +416,21 @@ class _OtherCategoryItemsScreenState
 }
 
 class _TypeRow extends StatelessWidget {
-  const _TypeRow({required this.typeId, required this.name});
+  const _TypeRow({
+    required this.typeId,
+    required this.name,
+    required this.depth,
+  });
   final int typeId;
   final String name;
+  final int depth;
 
   @override
   Widget build(BuildContext context) {
+    final indent = 16.0 + depth * 16;
     return ListTile(
       dense: true,
+      contentPadding: EdgeInsets.fromLTRB(indent, 0, 16, 0),
       leading: EveTypeImage(
         typeId: typeId,
         size: 32,

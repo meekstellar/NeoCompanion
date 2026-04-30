@@ -60,6 +60,7 @@ class TypesDatabase extends ChangeNotifier {
   Map<int, int?> _marketGroupParent = const {};
   Map<int?, List<int>> _marketGroupChildren = const {};
   Map<int, List<int>> _typesByMarketGroup = const {};
+  Map<int, int> _marketGroupSubtreeCount = const {};
   List<int> _typesWithoutMarketGroup = const [];
 
   int? _buildNumber;
@@ -113,6 +114,13 @@ class TypesDatabase extends ChangeNotifier {
   /// directly attached to this group, not to its descendants).
   List<int> typesInMarketGroup(int marketGroupId) =>
       _typesByMarketGroup[marketGroupId] ?? const [];
+
+  /// Total number of types under [marketGroupId], counting types
+  /// directly attached to it plus everything in any descendant group.
+  /// Precomputed at load time so the browse screen can render
+  /// "256 items" subtitles without recomputing on every rebuild.
+  int marketGroupSubtreeCount(int marketGroupId) =>
+      _marketGroupSubtreeCount[marketGroupId] ?? 0;
 
   /// Type IDs that have no `market_group_id` at all (skills, NPCs,
   /// blueprint copies, …). The screen shows them under an "Other" node.
@@ -288,6 +296,27 @@ class TypesDatabase extends ChangeNotifier {
     _marketGroupChildren = {
       for (final e in children.entries) e.key: List.unmodifiable(e.value),
     };
+
+    // Walk the market-group tree once to precompute total types under
+    // every group (own types + everything beneath). Memoised in a map
+    // so the browse screen can render counts without re-walking.
+    final subtreeCount = <int, int>{};
+    int countSubtree(int groupId) {
+      final cached = subtreeCount[groupId];
+      if (cached != null) return cached;
+      var total = (_typesByMarketGroup[groupId] ?? const []).length;
+      for (final child in (_marketGroupChildren[groupId] ?? const [])) {
+        total += countSubtree(child);
+      }
+      subtreeCount[groupId] = total;
+      return total;
+    }
+
+    for (final id in _marketGroupParent.keys) {
+      countSubtree(id);
+    }
+    _marketGroupSubtreeCount = Map.unmodifiable(subtreeCount);
+
     final groupRows = await db.query('groups', columns: ['id', 'category_id']);
     _groupCategory = {
       for (final r in groupRows)
@@ -439,6 +468,7 @@ class TypesDatabase extends ChangeNotifier {
     _marketGroupParent = const {};
     _marketGroupChildren = const {};
     _typesByMarketGroup = const {};
+    _marketGroupSubtreeCount = const {};
     _typesWithoutMarketGroup = const [];
     _buildNumber = null;
     _releaseDate = null;
