@@ -51,7 +51,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     final query = _filter.text.trim().toLowerCase();
 
     String typeName(int id) => data.typeNames[id] ?? '#$id';
-    String locationName(int id) => data.locationNames[id] ?? 'Location #$id';
+    String locationName(int id) => data.locationNames[id] ?? 'Unknown';
 
     final filtered = query.isEmpty
         ? data.items
@@ -59,11 +59,16 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
             .where((i) => typeName(i.typeId).toLowerCase().contains(query))
             .toList();
 
-    final byLocation = <int, List<AssetItem>>{};
+    // Group by outermost station/system; within each, sub-group by
+    // direct locationId so items inside our ships/containers cluster
+    // under their container.
+    final byOuter = <int, Map<int, List<AssetItem>>>{};
     for (final item in filtered) {
-      byLocation.putIfAbsent(item.locationId, () => []).add(item);
+      final outer = data.outerLocation[item.locationId] ?? item.locationId;
+      final inner = byOuter.putIfAbsent(outer, () => <int, List<AssetItem>>{});
+      inner.putIfAbsent(item.locationId, () => []).add(item);
     }
-    final locations = byLocation.keys.toList()
+    final outerLocations = byOuter.keys.toList()
       ..sort((a, b) => locationName(a).compareTo(locationName(b)));
 
     return Column(
@@ -87,7 +92,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
             children: [
               Text(
                 '${filtered.length} of ${data.items.length} items '
-                'in ${locations.length} locations',
+                'in ${outerLocations.length} locations',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -95,28 +100,65 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
         ),
         const Divider(height: 16),
         Expanded(
-          child: locations.isEmpty
+          child: outerLocations.isEmpty
               ? const Center(child: Text('No matching items'))
               : ListView.builder(
-                  itemCount: locations.length,
+                  itemCount: outerLocations.length,
                   itemBuilder: (context, i) {
-                    final loc = locations[i];
-                    final items = byLocation[loc]!;
+                    final outer = outerLocations[i];
+                    final groups = byOuter[outer]!;
+                    final outerCount =
+                        groups.values.fold<int>(0, (s, l) => s + l.length);
                     return ExpansionTile(
-                      title: Text(locationName(loc)),
-                      subtitle: Text('${items.length} items'),
+                      title: Text(locationName(outer)),
+                      subtitle: Text('$outerCount items'),
                       childrenPadding:
-                          const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      children: [
-                        for (final it in items)
-                          _AssetRow(item: it, typeName: typeName(it.typeId)),
-                      ],
+                          const EdgeInsets.fromLTRB(0, 0, 0, 4),
+                      children: _buildInner(
+                        outer: outer,
+                        groups: groups,
+                        typeName: typeName,
+                        locationName: locationName,
+                      ),
                     );
                   },
                 ),
         ),
       ],
     );
+  }
+
+  /// Inside one outer location:
+  ///   * loose items at the station/system itself
+  ///   * one nested ExpansionTile per ship/container we own there.
+  List<Widget> _buildInner({
+    required int outer,
+    required Map<int, List<AssetItem>> groups,
+    required String Function(int) typeName,
+    required String Function(int) locationName,
+  }) {
+    final loose = groups[outer] ?? const <AssetItem>[];
+    final containerIds = groups.keys.where((k) => k != outer).toList()
+      ..sort((a, b) => locationName(a).compareTo(locationName(b)));
+
+    return [
+      for (final it in loose)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          child: _AssetRow(item: it, typeName: typeName(it.typeId)),
+        ),
+      for (final cid in containerIds)
+        ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+          title: Text(locationName(cid)),
+          subtitle: Text('${groups[cid]!.length} items'),
+          childrenPadding: const EdgeInsets.fromLTRB(32, 0, 16, 8),
+          children: [
+            for (final it in groups[cid]!)
+              _AssetRow(item: it, typeName: typeName(it.typeId)),
+          ],
+        ),
+    ];
   }
 }
 

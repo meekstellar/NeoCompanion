@@ -15,11 +15,22 @@ class AssetsData {
     required this.items,
     required this.typeNames,
     required this.locationNames,
+    required this.outerLocation,
   });
 
   final List<AssetItem> items;
   final Map<int, String> typeNames;
+
+  /// Direct display name for a `locationId`: solar system, ESI-resolved
+  /// station/structure, or just the container's type name (e.g.
+  /// "Epithal"). For unknown locations the entry is missing.
   final Map<int, String> locationNames;
+
+  /// For each `locationId` seen on an item, the outermost station /
+  /// system / structure id that contains it (after walking through any
+  /// of our own containers). Used to deduplicate "Epithal in Jita" and
+  /// "Epithal in Jita" into one Jita group.
+  final Map<int, int> outerLocation;
 }
 
 final assetsProvider =
@@ -31,49 +42,79 @@ final assetsProvider =
 
   final items = await repo.fetchAll(characterId);
 
-  // Type names: local SDE only.
+  // Type names from local SDE.
   final typeNames = <int, String>{};
-  for (final item in items) {
-    final name = typesDb.lookup(item.typeId);
-    if (name != null) typeNames[item.typeId] = name;
+  for (final i in items) {
+    final n = typesDb.lookup(i.typeId);
+    if (n != null) typeNames[i.typeId] = n;
   }
 
-  // Location resolution prefers local lookups (solar systems) and
-  // containers we already own; only the rest goes to /universe/names/.
-  final locationNames = <int, String>{};
   final itemIdToType = {for (final i in items) i.itemId: i.typeId};
-  final unresolved = <int>[];
-  final locationIds = <int>{for (final i in items) i.locationId};
-  for (final id in locationIds) {
-    final system = typesDb.lookupSystem(id);
-    if (system != null) {
-      locationNames[id] = system;
-      continue;
+  final itemIdToLocation = {for (final i in items) i.itemId: i.locationId};
+
+  // Walk container chain → find the outermost location for any id.
+  int outerOf(int id) {
+    var current = id;
+    final visited = <int>{};
+    while (visited.add(current)) {
+      final outerId = itemIdToType.containsKey(current)
+          ? itemIdToLocation[current]
+          : null;
+      if (outerId == null) break;
+      current = outerId;
     }
-    final containerType = itemIdToType[id];
-    if (containerType != null) {
-      final containerName = typesDb.lookup(containerType);
-      if (containerName != null) {
-        locationNames[id] = '$containerName (container)';
-        continue;
-      }
-    }
-    unresolved.add(id);
+    return current;
   }
+
+  final outerLocation = <int, int>{};
+  for (final i in items) {
+    outerLocation.putIfAbsent(i.locationId, () => outerOf(i.locationId));
+  }
+
+  // Ask ESI for names of outermost locations we couldn't resolve locally.
+  final unresolved = <int>{};
+  for (final outerId in outerLocation.values) {
+    if (typesDb.lookupSystem(outerId) != null) continue;
+    if (itemIdToType.containsKey(outerId)) continue; // self-contained chain
+    unresolved.add(outerId);
+  }
+
+  Map<int, String> esiNames = const {};
   if (unresolved.isNotEmpty) {
     try {
-      final resolved = await character.resolveNames(unresolved);
-      for (final n in resolved) {
-        locationNames[n.id] = n.name;
-      }
+      final resolved = await character.resolveNames(unresolved.toList());
+      esiNames = {for (final n in resolved) n.id: n.name};
     } catch (_) {
-      // Player structures stay as raw IDs.
+      // Player structures stay Unknown.
     }
+  }
+
+  // Direct display name per locationId — no combined "Container — Outer"
+  // strings; the screen renders the hierarchy itself.
+  String? nameOf(int id) {
+    final system = typesDb.lookupSystem(id);
+    if (system != null) return system;
+    final esi = esiNames[id];
+    if (esi != null) return esi;
+    final ctype = itemIdToType[id];
+    if (ctype != null) return typesDb.lookup(ctype);
+    return null;
+  }
+
+  final locationNames = <int, String>{};
+  final allIds = <int>{
+    ...outerLocation.keys,
+    ...outerLocation.values,
+  };
+  for (final id in allIds) {
+    final name = nameOf(id);
+    if (name != null) locationNames[id] = name;
   }
 
   return AssetsData(
     items: items,
     typeNames: typeNames,
     locationNames: locationNames,
+    outerLocation: outerLocation,
   );
 });
