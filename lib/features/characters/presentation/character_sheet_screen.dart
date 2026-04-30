@@ -15,6 +15,8 @@ import '../../contracts/presentation/contracts_screen.dart';
 import '../../fittings/presentation/fittings_screen.dart';
 import '../../mail/presentation/mail_screen.dart';
 import '../../market/presentation/market_orders_screen.dart';
+import '../../server_status/data/dto/server_status.dart';
+import '../../server_status/server_status_providers.dart';
 import '../../skills/presentation/skill_queue_screen.dart';
 import '../../wallet/presentation/wallet_journal_screen.dart';
 import '../character_providers.dart';
@@ -192,69 +194,136 @@ String _formatIsk(double balance) {
   return NumberFormat('#,##0.00', 'en_US').format(balance);
 }
 
-class _HeaderCard extends StatelessWidget {
+class _HeaderCard extends ConsumerWidget {
   const _HeaderCard({required this.data});
   final CharacterSheetData data;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final corpName = data.nameOf(data.publicInfo.corporationId) ??
         'Corp #${data.publicInfo.corporationId}';
     final allianceName = data.publicInfo.allianceId == null
         ? null
         : data.nameOf(data.publicInfo.allianceId) ??
             'Alliance #${data.publicInfo.allianceId}';
+    final status = ref.watch(serverStatusProvider);
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: CachedNetworkImage(
-                imageUrl: data.portrait.px128,
-                width: 64,
-                height: 64,
-                placeholder: (_, _) => const SizedBox(width: 64, height: 64),
-                errorWidget: (_, _, _) => const SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: Icon(Icons.person, size: 32),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _LogoLine(
-                    imageUrl:
-                        'https://images.evetech.net/corporations/${data.publicInfo.corporationId}/logo?size=32',
-                    label: corpName,
-                  ),
-                  if (allianceName != null) ...[
-                    const SizedBox(height: 6),
-                    _LogoLine(
-                      imageUrl:
-                          'https://images.evetech.net/alliances/${data.publicInfo.allianceId}/logo?size=32',
-                      label: allianceName,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: CachedNetworkImage(
+                    imageUrl: data.portrait.px128,
+                    width: 64,
+                    height: 64,
+                    placeholder: (_, _) =>
+                        const SizedBox(width: 64, height: 64),
+                    errorWidget: (_, _, _) => const SizedBox(
+                      width: 64,
+                      height: 64,
+                      child: Icon(Icons.person, size: 32),
                     ),
-                  ],
-                ],
-              ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _LogoLine(
+                        imageUrl:
+                            'https://images.evetech.net/corporations/${data.publicInfo.corporationId}/logo?size=32',
+                        label: corpName,
+                      ),
+                      if (allianceName != null) ...[
+                        const SizedBox(height: 6),
+                        _LogoLine(
+                          imageUrl:
+                              'https://images.evetech.net/alliances/${data.publicInfo.allianceId}/logo?size=32',
+                          label: allianceName,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  size: 22,
+                  color: Theme.of(context).hintColor.withValues(alpha: 0.7),
+                ),
+              ],
             ),
-            Icon(
-              Icons.chevron_right,
-              size: 22,
-              color: Theme.of(context).hintColor.withValues(alpha: 0.7),
-            ),
+            const SizedBox(height: 10),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            _ServerStatusLine(status: status),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Compact single-line indicator at the bottom of the hero card:
+/// coloured dot · cluster name · player count (or status text). Reads
+/// from `serverStatusProvider`, so it updates in tandem with the
+/// character sheet refresh.
+class _ServerStatusLine extends StatelessWidget {
+  const _ServerStatusLine({required this.status});
+  final AsyncValue<ServerStatus> status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final (dotColor, label) = status.when(
+      loading: () => (
+        theme.hintColor,
+        'Tranquility · checking…',
+      ),
+      error: (_, _) => (
+        theme.hintColor,
+        'Tranquility · status unavailable',
+      ),
+      data: (s) {
+        if (!s.online) {
+          return (Colors.redAccent, 'Tranquility · offline');
+        }
+        final pilots = NumberFormat('#,##0', 'en_US').format(s.players);
+        final suffix = s.vip ? ' · VIP' : '';
+        return (
+          Colors.green,
+          'Tranquility · $pilots pilots online$suffix',
+        );
+      },
+    );
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: dotColor,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.hintColor),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }
