@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/locations/location_providers.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/types/types_database_providers.dart';
+import 'data/dto/market_history_entry.dart';
 import 'data/dto/market_order.dart';
 import 'data/market_repository.dart';
 
@@ -45,4 +46,29 @@ final marketOrdersProvider =
     typeNames: typeNames,
     locationNames: locationNames,
   );
+});
+
+/// Daily price/volume history for one type, defaulting to The Forge.
+/// Family key encodes both `typeId` and `regionId` so multiple regions
+/// could be requested side-by-side later (we don't expose region
+/// switching in the UI yet, but the provider is ready for it).
+class MarketHistoryKey {
+  const MarketHistoryKey({required this.typeId, required this.regionId});
+  final int typeId;
+  final int regionId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MarketHistoryKey &&
+      other.typeId == typeId &&
+      other.regionId == regionId;
+
+  @override
+  int get hashCode => Object.hash(typeId, regionId);
+}
+
+final marketHistoryProvider = FutureProvider.family<List<MarketHistoryEntry>,
+    MarketHistoryKey>((ref, key) async {
+  final repo = ref.watch(marketRepositoryProvider);
+  return repo.fetchHistory(typeId: key.typeId, regionId: key.regionId);
 });

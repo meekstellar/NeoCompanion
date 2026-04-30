@@ -1,7 +1,10 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../features/market/data/market_repository.dart';
+import '../../../features/market/market_providers.dart';
 import '../types_database.dart';
 import '../types_database_providers.dart';
 import 'eve_type_image.dart';
@@ -98,6 +101,7 @@ class _TypeDetailScreenState extends ConsumerState<TypeDetailScreen> {
                 _RequiredSkills(skills: detail.requiredSkills, db: db),
                 const SizedBox(height: 16),
               ],
+              _PriceHistory(typeId: widget.typeId),
               _Attributes(
                 attributes: detail.attributes,
                 db: db,
@@ -518,3 +522,156 @@ String _formatValue(double v) {
 
 String _roman(int level) =>
     const ['', 'I', 'II', 'III', 'IV', 'V'][level.clamp(0, 5)];
+
+/// Last 90 days of daily average price in The Forge (Jita) as a small
+/// line chart, plus the latest spot value and the 90-day delta.
+/// Hides itself silently for non-traded types (skills, NPCs, BPCs)
+/// since ESI returns an empty list for those, and on any network
+/// failure — price history is decoration, not load-bearing.
+class _PriceHistory extends ConsumerWidget {
+  const _PriceHistory({required this.typeId});
+
+  final int typeId;
+
+  static const _windowDays = 90;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(marketHistoryProvider(MarketHistoryKey(
+      typeId: typeId,
+      regionId: kDefaultMarketRegionId,
+    )));
+    return async.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (history) {
+        if (history.length < 2) return const SizedBox.shrink();
+        final cutoff =
+            DateTime.now().subtract(const Duration(days: _windowDays));
+        final recent =
+            history.where((e) => !e.date.isBefore(cutoff)).toList(growable: false);
+        if (recent.length < 2) return const SizedBox.shrink();
+
+        final first = recent.first;
+        final last = recent.last;
+        final delta = (last.average - first.average) / first.average;
+        final theme = Theme.of(context);
+        final positive = delta >= 0;
+
+        // Build chart points; x is days since the first sample so the
+        // chart auto-spaces ungappy series and naturally shows weekends.
+        final points = [
+          for (final e in recent)
+            FlSpot(
+              e.date.difference(first.date).inDays.toDouble(),
+              e.average,
+            ),
+        ];
+        var minY = points.first.y;
+        var maxY = points.first.y;
+        for (final p in points) {
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+        }
+        // Pad the y-range a touch so the line doesn't kiss the edges.
+        final pad = (maxY - minY) * 0.08;
+        if (pad == 0) {
+          minY -= 1;
+          maxY += 1;
+        } else {
+          minY -= pad;
+          maxY += pad;
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: _Section(
+            title: 'Price history',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_formatIsk(last.average)} ISK',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ),
+                    Text(
+                      '${positive ? '+' : ''}${(delta * 100).toStringAsFixed(1)}%',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: positive ? Colors.green : Colors.redAccent,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 140,
+                  child: LineChart(
+                    LineChartData(
+                      minY: minY,
+                      maxY: maxY,
+                      gridData: const FlGridData(show: false),
+                      titlesData: const FlTitlesData(show: false),
+                      borderData: FlBorderData(show: false),
+                      lineTouchData: LineTouchData(
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipItems: (spots) => [
+                            for (final s in spots)
+                              LineTooltipItem(
+                                '${_formatIsk(s.y)} ISK\n'
+                                '${_formatTooltipDate(first.date.add(Duration(days: s.x.toInt())))}',
+                                theme.textTheme.bodySmall ?? const TextStyle(),
+                              ),
+                          ],
+                        ),
+                      ),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: points,
+                          isCurved: false,
+                          color: theme.colorScheme.primary,
+                          barWidth: 2,
+                          dotData: const FlDotData(show: false),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'The Forge · last $_windowDays days',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.hintColor),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+String _formatIsk(double v) {
+  if (v >= 1_000_000_000) {
+    return '${(v / 1_000_000_000).toStringAsFixed(2)}B';
+  }
+  if (v >= 1_000_000) {
+    return '${(v / 1_000_000).toStringAsFixed(2)}M';
+  }
+  if (v >= 1_000) {
+    return NumberFormat('#,##0.##', 'en_US').format(v);
+  }
+  return v.toStringAsFixed(2);
+}
+
+String _formatTooltipDate(DateTime d) =>
+    DateFormat('MMM d, yyyy', 'en_US').format(d);
