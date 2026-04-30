@@ -29,7 +29,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Add character'), findsOneWidget);
+    expect(find.text('Add Character'), findsOneWidget);
     expect(find.text('No characters yet'), findsOneWidget);
   });
 }

@@ -1,96 +1,101 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/token_set.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../../core/notifications/notification_providers.dart';
-import '../../../core/types/presentation/item_database_screen.dart';
+import '../../skills/domain/skill_queue_calculator.dart';
+import '../../skills/skill_providers.dart';
+import '../character_providers.dart';
 import 'character_sheet_screen.dart';
 
-class CharacterListScreen extends ConsumerWidget {
+class CharacterListScreen extends ConsumerStatefulWidget {
   const CharacterListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final characters = ref.watch(storedCharactersProvider);
-    final activeId = ref.watch(activeCharacterIdProvider);
+  ConsumerState<CharacterListScreen> createState() =>
+      _CharacterListScreenState();
+}
 
+class _CharacterListScreenState extends ConsumerState<CharacterListScreen> {
+  Timer? _ticker;
+  DateTime _now = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final characters = ref.watch(storedCharactersProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Characters'),
-        actions: [
-          IconButton(
-            tooltip: 'Item database',
-            icon: const Icon(Icons.storage_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const ItemDatabaseScreen(),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              child: Text(
+                'Characters',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
               ),
             ),
-          ),
-        ],
-      ),
-      body: characters.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(describeEsiError(e))),
-        data: (list) {
-          if (list.isEmpty) {
-            return const _EmptyState();
-          }
-          return ListView.separated(
-            itemCount: list.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, i) {
-              final t = list[i];
-              return _CharacterTile(
-                token: t,
-                isActive: t.characterId == activeId,
-                onSelect: () {
-                  ref
-                      .read(activeCharacterIdProvider.notifier)
-                      .set(t.characterId);
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          CharacterSheetScreen(characterId: t.characterId),
+            Expanded(
+              child: characters.when(
+                loading: () =>
+                    const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text(describeEsiError(e))),
+                data: (list) {
+                  if (list.isEmpty) return const _EmptyState();
+                  return ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    itemCount: list.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, i) => _CharacterCard(
+                      token: list[i],
+                      now: _now,
                     ),
                   );
                 },
-                onSignOut: () async {
-                  final tm = ref.read(tokenManagerProvider);
-                  await tm.remove(t.characterId);
-                  if (activeId == t.characterId) {
-                    ref.read(activeCharacterIdProvider.notifier).set(null);
-                  }
-                  ref.invalidate(storedCharactersProvider);
-                },
-              );
-            },
-          );
-        },
+              ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _addCharacter(context, ref),
         icon: const Icon(Icons.add),
-        label: const Text('Add character'),
+        label: const Text('Add Character'),
       ),
     );
   }
 
   Future<void> _addCharacter(BuildContext context, WidgetRef ref) async {
     final sso = ref.read(eveSsoServiceProvider);
-    final wasEmpty = (ref.read(storedCharactersProvider).value ?? const [])
-        .isEmpty;
+    final wasEmpty =
+        (ref.read(storedCharactersProvider).value ?? const []).isEmpty;
     try {
       final character = await sso.signIn();
       ref.read(activeCharacterIdProvider.notifier).set(character.id);
       ref.invalidate(storedCharactersProvider);
       if (wasEmpty) {
-        // First character — ask for notification permission so skill-completion
-        // reminders can fire. iOS only prompts the user once.
         unawaited(ref.read(notificationServiceProvider).requestPermissions());
       }
     } catch (e) {
@@ -99,6 +104,271 @@ class CharacterListScreen extends ConsumerWidget {
         SnackBar(content: Text('Sign-in failed: $e')),
       );
     }
+  }
+}
+
+class _CharacterCard extends ConsumerWidget {
+  const _CharacterCard({required this.token, required this.now});
+
+  final TokenSet token;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sheet = ref.watch(characterSheetProvider(token.characterId));
+    final queue = ref.watch(skillQueueProvider(token.characterId));
+
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          ref
+              .read(activeCharacterIdProvider.notifier)
+              .set(token.characterId);
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  CharacterSheetScreen(characterId: token.characterId),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _Portrait(
+                characterId: token.characterId,
+                corporationId: sheet.value?.publicInfo.corporationId,
+                allianceId: sheet.value?.publicInfo.allianceId,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      sheet.value?.publicInfo.name ?? token.characterName,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    _TrainingChip(
+                      queue: queue.value,
+                      skillNames: queue.value?.skillNames ?? const {},
+                      now: now,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _StatChip(
+                          label: 'ISK',
+                          value: _formatIsk(sheet.value?.walletBalance),
+                        ),
+                        _StatChip(
+                          label: 'SP',
+                          value: _formatSp(queue.value?.skills.totalSp),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right,
+                  size: 22,
+                  color: Theme.of(context).hintColor.withValues(alpha: 0.7)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Portrait extends StatelessWidget {
+  const _Portrait({
+    required this.characterId,
+    required this.corporationId,
+    required this.allianceId,
+  });
+
+  final int characterId;
+  final int? corporationId;
+  final int? allianceId;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 96,
+      height: 96,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipOval(
+            child: CachedNetworkImage(
+              imageUrl:
+                  'https://images.evetech.net/characters/$characterId/portrait?size=128',
+              width: 96,
+              height: 96,
+              fit: BoxFit.cover,
+              placeholder: (_, _) => Container(
+                color:
+                    Theme.of(context).colorScheme.surfaceContainerHighest,
+              ),
+              errorWidget: (_, _, _) => const Icon(Icons.person, size: 32),
+            ),
+          ),
+          if (corporationId != null)
+            Positioned(
+              left: 0,
+              bottom: 0,
+              child: _BadgeImage(
+                url:
+                    'https://images.evetech.net/corporations/$corporationId/logo?size=64',
+              ),
+            ),
+          if (allianceId != null)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: _BadgeImage(
+                url:
+                    'https://images.evetech.net/alliances/$allianceId/logo?size=64',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BadgeImage extends StatelessWidget {
+  const _BadgeImage({required this.url});
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          width: 2,
+        ),
+      ),
+      child: ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: url,
+          width: 32,
+          height: 32,
+          fit: BoxFit.cover,
+          placeholder: (_, _) => const SizedBox(width: 32, height: 32),
+          errorWidget: (_, _, _) => const SizedBox(width: 32, height: 32),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrainingChip extends StatelessWidget {
+  const _TrainingChip({
+    required this.queue,
+    required this.skillNames,
+    required this.now,
+  });
+
+  final SkillQueueData? queue;
+  final Map<int, String> skillNames;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    if (queue == null) {
+      return _Pill(
+        background:
+            Theme.of(context).colorScheme.surfaceContainerHigh,
+        child: Text(
+          '…',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      );
+    }
+
+    const calc = SkillQueueCalculator();
+    final entry = queue!.queue
+        .map((e) => calc.progressOf(e, now))
+        .where((p) => p.state == SkillTrainingState.training)
+        .firstOrNull;
+
+    final colors = Theme.of(context).colorScheme;
+    if (entry == null) {
+      return _Pill(
+        background: colors.surfaceContainerHigh,
+        child: Text(
+          'Not training',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      );
+    }
+
+    final name = skillNames[entry.entry.skillId] ?? '#${entry.entry.skillId}';
+    final level = _roman(entry.entry.finishedLevel);
+    final remaining = _formatDuration(entry.remaining);
+
+    return _Pill(
+      background: colors.surfaceContainerHigh,
+      child: Text(
+        '$name $level  $remaining',
+        style: Theme.of(context).textTheme.bodyMedium,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  const _StatChip({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Pill(
+      background: Theme.of(context).colorScheme.surfaceContainerHigh,
+      child: Text(
+        '$label: $value',
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({required this.background, required this.child});
+  final Color background;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: child,
+    );
   }
 }
 
@@ -131,41 +401,34 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _CharacterTile extends StatelessWidget {
-  const _CharacterTile({
-    required this.token,
-    required this.isActive,
-    required this.onSelect,
-    required this.onSignOut,
-  });
-
-  final TokenSet token;
-  final bool isActive;
-  final VoidCallback onSelect;
-  final VoidCallback onSignOut;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      onTap: onSelect,
-      leading: CircleAvatar(child: Text(token.characterName.characters.first)),
-      title: Text(token.characterName),
-      subtitle: Text('ID ${token.characterId}'),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (isActive)
-            const Padding(
-              padding: EdgeInsets.only(right: 8),
-              child: Icon(Icons.check_circle, size: 18),
-            ),
-          IconButton(
-            tooltip: 'Sign out',
-            icon: const Icon(Icons.logout),
-            onPressed: onSignOut,
-          ),
-        ],
-      ),
-    );
-  }
+String _formatIsk(double? balance) {
+  if (balance == null) return '—';
+  return _compact(balance);
 }
+
+String _formatSp(int? sp) {
+  if (sp == null) return '—';
+  return _compact(sp.toDouble());
+}
+
+String _compact(double v) {
+  if (v.abs() >= 1e9) return '${(v / 1e9).toStringAsFixed(1)}B';
+  if (v.abs() >= 1e6) return '${(v / 1e6).toStringAsFixed(1)}M';
+  if (v.abs() >= 1e3) return '${(v / 1e3).toStringAsFixed(1)}K';
+  return NumberFormat('#,##0', 'en_US').format(v);
+}
+
+String _formatDuration(Duration d) {
+  if (d.inSeconds <= 0) return '0s';
+  final days = d.inDays;
+  final hours = d.inHours % 24;
+  final minutes = d.inMinutes % 60;
+  final seconds = d.inSeconds % 60;
+  if (days > 0) return '${days}d ${hours}h ${minutes}m ${seconds}s';
+  if (hours > 0) return '${hours}h ${minutes}m ${seconds}s';
+  if (minutes > 0) return '${minutes}m ${seconds}s';
+  return '${seconds}s';
+}
+
+String _roman(int level) =>
+    const ['', 'I', 'II', 'III', 'IV', 'V'][level.clamp(0, 5)];
