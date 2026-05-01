@@ -228,3 +228,211 @@ List<TypeMatch> _sortedItems(List<TypeMatch> items) {
   out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   return out;
 }
+
+/// Lazy market-group browser — renders the in-game market hierarchy
+/// without needing a precomputed match list. Each [ExpansionTile]
+/// builds its children on first expand, so a top-level "Ship Equipment"
+/// node with thousands of descendants stays cheap until the user opens
+/// it. Used by pickers (e.g. the cargo picker) where the empty-query
+/// state should let the player drill the full market tree.
+class MarketGroupBrowser extends StatelessWidget {
+  const MarketGroupBrowser({
+    super.key,
+    required this.db,
+    required this.onPick,
+    this.rootMarketGroupId,
+    this.imageKind = EveTypeImageKind.icon,
+    this.imageSize = 36,
+  });
+
+  final TypesDatabase db;
+  final void Function(int typeId) onPick;
+  final int? rootMarketGroupId;
+  final EveTypeImageKind imageKind;
+  final double imageSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final children = db.marketGroupChildren(rootMarketGroupId).toList()
+      ..sort((a, b) => (db.lookupMarketGroup(a) ?? '')
+          .toLowerCase()
+          .compareTo((db.lookupMarketGroup(b) ?? '').toLowerCase()));
+    final directTypes = rootMarketGroupId == null
+        ? const <int>[]
+        : db.typesInMarketGroup(rootMarketGroupId!);
+    if (children.isEmpty && directTypes.isEmpty) {
+      return const Center(child: Text('Empty'));
+    }
+    return ListView(
+      children: [
+        for (final gid in children)
+          _BrowserNode(
+            db: db,
+            groupId: gid,
+            depth: 0,
+            imageKind: imageKind,
+            imageSize: imageSize,
+            onPick: onPick,
+          ),
+        for (final t in _typesSorted(db, directTypes))
+          _BrowserTypeRow(
+            db: db,
+            typeId: t.id,
+            name: t.name,
+            depth: 0,
+            imageKind: imageKind,
+            imageSize: imageSize,
+            onPick: onPick,
+          ),
+      ],
+    );
+  }
+}
+
+class _BrowserNode extends StatelessWidget {
+  const _BrowserNode({
+    required this.db,
+    required this.groupId,
+    required this.depth,
+    required this.imageKind,
+    required this.imageSize,
+    required this.onPick,
+  });
+
+  final TypesDatabase db;
+  final int groupId;
+  final int depth;
+  final EveTypeImageKind imageKind;
+  final double imageSize;
+  final void Function(int typeId) onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final name = db.lookupMarketGroup(groupId) ?? '#$groupId';
+    final total = db.marketGroupSubtreeCount(groupId);
+    final indent = 16.0 + depth * 16;
+    return ExpansionTile(
+      shape: const Border(),
+      collapsedShape: const Border(),
+      tilePadding: EdgeInsets.fromLTRB(indent, 0, 16, 0),
+      childrenPadding: EdgeInsets.zero,
+      title: Text(name, style: theme.textTheme.titleSmall),
+      trailing: Text(
+        '$total',
+        style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+      ),
+      children: [
+        _BrowserBody(
+          db: db,
+          groupId: groupId,
+          depth: depth,
+          imageKind: imageKind,
+          imageSize: imageSize,
+          onPick: onPick,
+        ),
+      ],
+    );
+  }
+}
+
+class _BrowserBody extends StatelessWidget {
+  const _BrowserBody({
+    required this.db,
+    required this.groupId,
+    required this.depth,
+    required this.imageKind,
+    required this.imageSize,
+    required this.onPick,
+  });
+
+  final TypesDatabase db;
+  final int groupId;
+  final int depth;
+  final EveTypeImageKind imageKind;
+  final double imageSize;
+  final void Function(int typeId) onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final subgroups = db.marketGroupChildren(groupId).toList()
+      ..sort((a, b) => (db.lookupMarketGroup(a) ?? '')
+          .toLowerCase()
+          .compareTo((db.lookupMarketGroup(b) ?? '').toLowerCase()));
+    final types = _typesSorted(db, db.typesInMarketGroup(groupId));
+    return Column(
+      children: [
+        for (final sgId in subgroups)
+          _BrowserNode(
+            db: db,
+            groupId: sgId,
+            depth: depth + 1,
+            imageKind: imageKind,
+            imageSize: imageSize,
+            onPick: onPick,
+          ),
+        for (final t in types)
+          _BrowserTypeRow(
+            db: db,
+            typeId: t.id,
+            name: t.name,
+            depth: depth + 1,
+            imageKind: imageKind,
+            imageSize: imageSize,
+            onPick: onPick,
+          ),
+      ],
+    );
+  }
+}
+
+class _BrowserTypeRow extends StatelessWidget {
+  const _BrowserTypeRow({
+    required this.db,
+    required this.typeId,
+    required this.name,
+    required this.depth,
+    required this.imageKind,
+    required this.imageSize,
+    required this.onPick,
+  });
+
+  final TypesDatabase db;
+  final int typeId;
+  final String name;
+  final int depth;
+  final EveTypeImageKind imageKind;
+  final double imageSize;
+  final void Function(int typeId) onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final indent = 16.0 + depth * 16;
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.fromLTRB(indent, 0, 16, 0),
+      leading: EveTypeImage(
+        typeId: typeId,
+        kind: imageKind,
+        size: imageSize,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      title: Text(name),
+      onTap: () => onPick(typeId),
+    );
+  }
+}
+
+List<({int id, String name})> _typesSorted(
+  TypesDatabase db,
+  List<int> typeIds,
+) {
+  final out = <({int id, String name})>[];
+  for (final tid in typeIds) {
+    final n = db.lookup(tid);
+    if (n == null) continue;
+    out.add((id: tid, name: n));
+  }
+  out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  return out;
+}

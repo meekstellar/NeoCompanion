@@ -196,7 +196,12 @@ class TypesDatabase extends ChangeNotifier {
   Future<List<TypeMatch>> searchTypesByEffect({
     required int effectId,
     String query = '',
-    int limit = 250,
+    // Each slot effect (hi/med/low/rig) covers ~1k–1.4k published modules.
+    // The picker UI groups by market group rather than paginating, so a
+    // tight 250-row cap silently chopped the alphabetical tail — e.g.
+    // every cloak past "'Smokescreen' Covert Ops…" disappeared from a
+    // hi-slot Anathema picker. Set the ceiling above the largest slot.
+    int limit = 5000,
     String? lang,
     int? rigSize,
     int? shipTypeId,
@@ -416,6 +421,25 @@ class TypesDatabase extends ChangeNotifier {
         if (r['volume'] != null)
           (r['id'] as num).toInt(): (r['volume'] as num).toDouble(),
     };
+  }
+
+  /// Base capacity (m³) from the `types` row — for ships this is the
+  /// cargo bay shown in Show Info. CCP keeps it on the type itself, not
+  /// as a dogma attribute, so the fitting engine has to read it here
+  /// before merging into the ship attribute map.
+  Future<double?> typeCapacity(int typeId) async {
+    final db = _db;
+    if (db == null) return null;
+    final rows = await db.query(
+      'types',
+      columns: ['capacity'],
+      where: 'id = ?',
+      whereArgs: [typeId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final v = rows.first['capacity'];
+    return v == null ? null : (v as num).toDouble();
   }
 
   /// Set of dogma effect ids attached to [typeId]. Used by the fitting

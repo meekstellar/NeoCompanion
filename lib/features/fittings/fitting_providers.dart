@@ -25,7 +25,16 @@ Future<FitResources> loadFitResources({
   Map<int, int> skills = const {},
   Map<int, List<Modifier>> pilotMods = const {},
 }) async {
-  final shipAttrs = await db.typeDogmaAttributes(shipTypeId);
+  final shipAttrs = Map<int, double>.from(
+    await db.typeDogmaAttributes(shipTypeId),
+  );
+  // CCP keeps the ship's cargo bay on `invTypes.capacity`, not as a
+  // dogma attribute — without this fallback the resources panel and
+  // the cargo card would think the ship has no cargo at all.
+  if (!shipAttrs.containsKey(38)) {
+    final cap = await db.typeCapacity(shipTypeId);
+    if (cap != null && cap > 0) shipAttrs[38] = cap;
+  }
   final attrsByType = <int, Map<int, double>>{};
   final effectsByType = <int, Set<int>>{};
   for (final item in items) {

@@ -259,8 +259,11 @@ class _FittingEditorBodyState extends ConsumerState<FittingEditorBody> {
         builder: (_) => TypePickerScreen(
           title: 'Add to cargo',
           hintText: 'Search items',
-          emptyQueryHint: 'Type to search any published item',
           search: (db, q) => db.searchPublishedTypes(query: q),
+          // Empty query opens the in-game market browser instead of a
+          // bare hint — cargo can hold anything, so let the player
+          // drill the tree when they don't know the exact name.
+          browseWhenEmpty: true,
         ),
       ),
     );

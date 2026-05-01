@@ -29,6 +29,7 @@ class TypePickerScreen extends ConsumerStatefulWidget {
     this.imageSize = 36,
     this.emptyQueryHint,
     this.rootMarketGroupId,
+    this.browseWhenEmpty = false,
   });
 
   final String title;
@@ -38,15 +39,22 @@ class TypePickerScreen extends ConsumerStatefulWidget {
   final double imageSize;
 
   /// Shown instead of running the search when the query is empty. Set
-  /// for pickers (like cargo) where dumping every published type is
-  /// pointless and wasteful.
+  /// for pickers where dumping every published type is pointless and
+  /// no browse fallback is wanted. Ignored when [browseWhenEmpty] is
+  /// true.
   final String? emptyQueryHint;
 
   /// When set, results render as a market-group tree rooted at this
   /// id (the in-game market browser layout). Null falls back to a
-  /// flat group-by-group list — used by the cargo picker where the
-  /// user is name-searching arbitrary items.
+  /// flat group-by-group list — used when the user is name-searching
+  /// arbitrary items.
   final int? rootMarketGroupId;
+
+  /// When true, the empty-query state renders a lazy market-group
+  /// browser (rooted at [rootMarketGroupId], or the whole tree if
+  /// null) instead of the search hint. Lets the user drill the in-game
+  /// market hierarchy without typing — used by the cargo picker.
+  final bool browseWhenEmpty;
 
   @override
   ConsumerState<TypePickerScreen> createState() => _TypePickerScreenState();
@@ -85,17 +93,32 @@ class _TypePickerScreenState extends ConsumerState<TypePickerScreen> {
             ),
           ),
           Expanded(
-            child: widget.emptyQueryHint != null && _query.trim().isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        widget.emptyQueryHint!,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Theme.of(context).hintColor),
-                      ),
-                    ),
-                  )
+            child: _query.trim().isEmpty
+                ? (widget.browseWhenEmpty
+                    ? _Browser(
+                        rootMarketGroupId: widget.rootMarketGroupId,
+                        imageKind: widget.imageKind,
+                        imageSize: widget.imageSize,
+                      )
+                    : (widget.emptyQueryHint != null
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                widget.emptyQueryHint!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: Theme.of(context).hintColor),
+                              ),
+                            ),
+                          )
+                        : _Results(
+                            search: widget.search,
+                            query: _query,
+                            imageKind: widget.imageKind,
+                            imageSize: widget.imageSize,
+                            rootMarketGroupId: widget.rootMarketGroupId,
+                          )))
                 : _Results(
                     search: widget.search,
                     query: _query,
@@ -106,6 +129,31 @@ class _TypePickerScreenState extends ConsumerState<TypePickerScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _Browser extends ConsumerWidget {
+  const _Browser({
+    required this.rootMarketGroupId,
+    required this.imageKind,
+    required this.imageSize,
+  });
+
+  final int? rootMarketGroupId;
+  final EveTypeImageKind imageKind;
+  final double imageSize;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(typesDatabaseRevisionProvider);
+    final db = ref.watch(typesDatabaseProvider);
+    return MarketGroupBrowser(
+      db: db,
+      rootMarketGroupId: rootMarketGroupId,
+      imageKind: imageKind,
+      imageSize: imageSize,
+      onPick: (id) => Navigator.of(context).pop<int>(id),
     );
   }
 }
