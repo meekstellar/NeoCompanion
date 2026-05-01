@@ -499,6 +499,7 @@ Stream<double> _importDogmaAttributes(
     final m = e.body;
     batch.insert('dogma_attributes', {
       'id': e.id,
+      'name': m['name'] as String?,
       'default_value': _asDouble(m['defaultValue']),
       'high_is_good': (m['highIsGood'] == true) ? 1 : 0,
       'stackable': (m['stackable'] == true) ? 1 : 0,

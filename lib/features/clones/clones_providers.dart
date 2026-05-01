@@ -20,6 +20,12 @@ class ClonesView {
   final Map<int, String> locationNames;
 }
 
+/// Type ids of implants currently slotted in the active clone.
+final activeImplantsProvider =
+    FutureProvider.family<List<int>, int>((ref, characterId) async {
+  return ref.watch(clonesRepositoryProvider).fetchActiveImplants(characterId);
+});
+
 final jumpClonesProvider =
     FutureProvider.family<ClonesView, int>((ref, characterId) async {
   ref.watch(typesDatabaseRevisionProvider);

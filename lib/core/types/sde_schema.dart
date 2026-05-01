@@ -15,6 +15,12 @@ import 'package:sqflite_common/sqflite.dart';
 ///          window does — Structure, Capacitor, Targeting, …) and
 ///          `traits` + `trait_translations` (the blue-text role and
 ///          per-skill ship bonuses).
+///
+/// `dogma_attributes.name` is read opportunistically — older prebuilts
+/// don't have the column and the loader degrades to hardcoded fallback
+/// ids in the dogma engine. Once CI ships a prebuilt that includes the
+/// column, lookups by canonical name will start populating
+/// automatically (no schema bump needed for an additive column).
 const int kSdeSchemaVersion = 4;
 
 /// All EVE SDE languages we ingest. Stored as ISO-639-1 codes in the
@@ -28,6 +34,14 @@ const sdeLanguages = <String>[
 /// are populated for this language at load time; other languages are
 /// queried on demand.
 const sdeDefaultLanguage = 'en';
+
+/// Lightweight result row for type searches (name + group context).
+class TypeMatch {
+  const TypeMatch({required this.typeId, required this.name, this.groupId});
+  final int typeId;
+  final String name;
+  final int? groupId;
+}
 
 class TypeRequiredSkill {
   const TypeRequiredSkill({required this.skillTypeId, required this.level});
@@ -128,6 +142,7 @@ CREATE TABLE market_group_translations (
   await db.execute('''
 CREATE TABLE dogma_attributes (
   id INTEGER PRIMARY KEY,
+  name TEXT,
   default_value REAL,
   high_is_good INTEGER,
   stackable INTEGER,
@@ -360,6 +375,8 @@ Future<void> createSdeIndexes(Database db) async {
   await db.execute(
       'CREATE INDEX idx_stations_system ON stations(solar_system_id)');
   await db.execute('CREATE INDEX idx_traits_type ON traits(type_id)');
+  await db.execute(
+      'CREATE INDEX idx_dogma_attributes_name ON dogma_attributes(name)');
 }
 
 /// Opens (or creates) the production SDE SQLite file. Returns null if

@@ -9,11 +9,13 @@ import 'package:path_provider/path_provider.dart';
 
 import 'core/notifications/notification_providers.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/storage/app_database.dart';
 import 'core/types/presentation/item_database_gate.dart';
 import 'core/types/types_database.dart';
 import 'core/types/types_database_providers.dart';
 import 'core/ui/offline_banner.dart';
 import 'features/characters/presentation/character_list_screen.dart';
+import 'features/fittings/local_fitting_providers.dart';
 import 'features/skills/skill_notification_sync_scope.dart';
 
 Future<void> bootstrap(Flavor flavor) async {
@@ -28,12 +30,15 @@ Future<void> bootstrap(Flavor flavor) async {
   final typesDb = TypesDatabase(sqlite, path: dbPath);
   await typesDb.load();
 
+  final appDb = await openAppDatabase(p.join(docsDir.path, 'app.db'));
+
   runApp(
     ProviderScope(
       overrides: [
         appConfigProvider.overrideWithValue(config),
         notificationServiceProvider.overrideWithValue(notifications),
         typesDatabaseProvider.overrideWithValue(typesDb),
+        appDatabaseProvider.overrideWithValue(appDb),
       ],
       child: const NeoCompanionApp(),
     ),

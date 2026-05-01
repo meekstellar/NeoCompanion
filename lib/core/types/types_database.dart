@@ -9,6 +9,7 @@ export 'sde_schema.dart'
         kSdeSchemaVersion,
         sdeLanguages,
         sdeDefaultLanguage,
+        TypeMatch,
         TypeRequiredSkill,
         TypeTrait,
         createSdeSchema,
@@ -55,6 +56,8 @@ class TypesDatabase extends ChangeNotifier {
   Map<int, String> _attributeDisplayNames = const {};
   Map<int, String> _attributeCategoryNames = const {};
   Map<int, int?> _attributeCategoryByAttribute = const {};
+  Map<String, int> _attributeIdByName = const {};
+  Map<int, bool> _attributeStackable = const {};
 
   Map<int, int?> _groupCategory = const {};
   Map<int, int?> _typeGroup = const {};
@@ -109,6 +112,18 @@ class TypesDatabase extends ChangeNotifier {
   int? attributeCategoryId(int attributeId) =>
       _attributeCategoryByAttribute[attributeId];
 
+  /// Resolves a canonical (English, language-independent) attribute
+  /// name like `armorEmDamageResonanceMultiplier` to its SDE id. Used
+  /// by the dogma engine to find modifier-source and modifier-target
+  /// attributes without hardcoding numeric ids.
+  int? attributeIdByName(String name) => _attributeIdByName[name];
+
+  /// Whether the attribute is stackable (no penalty applies). Maps to
+  /// the SDE's `stackable` flag on the attribute. Defaults to false
+  /// for unknown attributes — the safe assumption.
+  bool attributeIsStackable(int attributeId) =>
+      _attributeStackable[attributeId] ?? false;
+
   /// Type IDs that belong to [groupId], in no particular order. Empty
   /// when the group has no types in the local cache.
   List<int> typesInGroup(int groupId) => _typesByGroup[groupId] ?? const [];
@@ -155,6 +170,181 @@ class TypesDatabase extends ChangeNotifier {
   /// Fetches a type's localized name in [lang] (defaults to English).
   Future<String?> typeName(int typeId, {String? lang}) async {
     return _localizedField('type_translations', 'type_id', typeId, 'name', lang);
+  }
+
+  /// Searches the published types for ones that carry a given dogma
+  /// effect — the ESI/SDE convention for "this module fits a high/mid/
+  /// low/rig slot". Pass an empty [query] to list everything for the
+  /// effect; otherwise filters by case-insensitive name substring.
+  Future<List<TypeMatch>> searchTypesByEffect({
+    required int effectId,
+    String query = '',
+    int limit = 250,
+    String? lang,
+    int? rigSize,
+  }) async {
+    final db = _db;
+    if (db == null) return const [];
+    final args = <Object>[lang ?? sdeDefaultLanguage, effectId];
+    var sql = '''
+      SELECT t.id, tt.name, t.group_id
+      FROM types t
+      JOIN type_dogma_effects tde ON tde.type_id = t.id
+      JOIN type_translations tt
+        ON tt.type_id = t.id AND tt.lang = ?
+      WHERE tde.effect_id = ?
+        AND t.published = 1
+        AND tt.name IS NOT NULL
+    ''';
+    if (rigSize != null) {
+      // Rigs (and other sized fittings) carry attribute 1547 = rigSize;
+      // it must match the ship's rigSize. Modules without the attribute
+      // are unsized (rare for rigs) and pass through.
+      sql += '''
+        AND (
+          NOT EXISTS (
+            SELECT 1 FROM type_dogma_attributes
+            WHERE type_id = t.id AND attribute_id = 1547
+          )
+          OR EXISTS (
+            SELECT 1 FROM type_dogma_attributes
+            WHERE type_id = t.id AND attribute_id = 1547 AND value = ?
+          )
+        )
+      ''';
+      args.add(rigSize);
+    }
+    final q = query.trim();
+    if (q.isNotEmpty) {
+      sql += ' AND tt.name LIKE ?';
+      args.add('%${q.replaceAll('%', r'\%')}%');
+    }
+    sql += ' ORDER BY tt.name COLLATE NOCASE LIMIT ?';
+    args.add(limit);
+    final rows = await db.rawQuery(sql, args);
+    return [
+      for (final r in rows)
+        TypeMatch(
+          typeId: (r['id'] as num).toInt(),
+          name: r['name'] as String,
+          groupId: (r['group_id'] as num?)?.toInt(),
+        ),
+    ];
+  }
+
+  /// Searches published types in [categoryId] (e.g. 6 for Ship). Same
+  /// shape as [searchTypesByEffect] — filters by case-insensitive name
+  /// substring when [query] is non-empty.
+  Future<List<TypeMatch>> searchTypesByCategory({
+    required int categoryId,
+    String query = '',
+    int limit = 250,
+    String? lang,
+  }) async {
+    final db = _db;
+    if (db == null) return const [];
+    final args = <Object>[lang ?? sdeDefaultLanguage, categoryId];
+    var sql = '''
+      SELECT t.id, tt.name, t.group_id
+      FROM types t
+      JOIN groups g ON g.id = t.group_id
+      JOIN type_translations tt
+        ON tt.type_id = t.id AND tt.lang = ?
+      WHERE g.category_id = ?
+        AND t.published = 1
+        AND tt.name IS NOT NULL
+    ''';
+    final q = query.trim();
+    if (q.isNotEmpty) {
+      sql += ' AND tt.name LIKE ?';
+      args.add('%${q.replaceAll('%', r'\%')}%');
+    }
+    sql += ' ORDER BY tt.name COLLATE NOCASE LIMIT ?';
+    args.add(limit);
+    final rows = await db.rawQuery(sql, args);
+    return [
+      for (final r in rows)
+        TypeMatch(
+          typeId: (r['id'] as num).toInt(),
+          name: r['name'] as String,
+          groupId: (r['group_id'] as num?)?.toInt(),
+        ),
+    ];
+  }
+
+  /// Searches every published type by name substring. Used by the
+  /// cargo picker, where the bucket can hold anything from ammo to
+  /// spare modules — restricting by category isn't workable.
+  Future<List<TypeMatch>> searchPublishedTypes({
+    required String query,
+    int limit = 250,
+    String? lang,
+  }) async {
+    final db = _db;
+    if (db == null) return const [];
+    final q = query.trim();
+    if (q.isEmpty) return const [];
+    final rows = await db.rawQuery(
+      '''
+      SELECT t.id, tt.name, t.group_id
+      FROM types t
+      JOIN type_translations tt
+        ON tt.type_id = t.id AND tt.lang = ?
+      WHERE t.published = 1
+        AND tt.name IS NOT NULL
+        AND tt.name LIKE ?
+      ORDER BY tt.name COLLATE NOCASE
+      LIMIT ?
+      ''',
+      [
+        lang ?? sdeDefaultLanguage,
+        '%${q.replaceAll('%', r'\%')}%',
+        limit,
+      ],
+    );
+    return [
+      for (final r in rows)
+        TypeMatch(
+          typeId: (r['id'] as num).toInt(),
+          name: r['name'] as String,
+          groupId: (r['group_id'] as num?)?.toInt(),
+        ),
+    ];
+  }
+
+  /// Per-unit packaged volume (m³) for a set of [typeIds]. Reads the
+  /// `volume` column on the `types` table — same value the in-game Show
+  /// Info window displays. Missing types are absent from the result map.
+  Future<Map<int, double>> typeVolumes(Iterable<int> typeIds) async {
+    final db = _db;
+    if (db == null) return const {};
+    final ids = typeIds.toSet().toList();
+    if (ids.isEmpty) return const {};
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final rows = await db.rawQuery(
+      'SELECT id, volume FROM types WHERE id IN ($placeholders)',
+      ids,
+    );
+    return {
+      for (final r in rows)
+        if (r['volume'] != null)
+          (r['id'] as num).toInt(): (r['volume'] as num).toDouble(),
+    };
+  }
+
+  /// Set of dogma effect ids attached to [typeId]. Used by the fitting
+  /// engine to detect modifier-flavour properties that aren't expressed
+  /// as a plain attribute (e.g. `turretFitted`=42, `launcherFitted`=40).
+  Future<Set<int>> typeDogmaEffectIds(int typeId) async {
+    final db = _db;
+    if (db == null) return const {};
+    final rows = await db.query(
+      'type_dogma_effects',
+      columns: ['effect_id'],
+      where: 'type_id = ?',
+      whereArgs: [typeId],
+    );
+    return {for (final r in rows) (r['effect_id'] as num).toInt()};
   }
 
   /// All dogma attributes set on [typeId] as `attributeId → value`.
@@ -312,14 +502,36 @@ class TypesDatabase extends ChangeNotifier {
           (r['id']! as num).toInt(): r['name']?.toString() ?? '',
     };
 
+    // The `name` column is optional — older prebuilt SDE bundles
+    // (everything before the column was added) don't have it. Probe
+    // the table layout first and only read it when present so a
+    // pre-update prebuilt still loads without crashing.
+    final hasNameColumn = await _columnExists(db, 'dogma_attributes', 'name');
     final attrIdToCategory = await db.query(
       'dogma_attributes',
-      columns: ['id', 'category_id'],
+      columns: [
+        'id',
+        'category_id',
+        'stackable',
+        if (hasNameColumn) 'name',
+      ],
     );
     _attributeCategoryByAttribute = {
       for (final r in attrIdToCategory)
         if (r['id'] is num)
           (r['id']! as num).toInt(): (r['category_id'] as num?)?.toInt(),
+    };
+    _attributeIdByName = !hasNameColumn
+        ? const {}
+        : {
+            for (final r in attrIdToCategory)
+              if (r['id'] is num && r['name'] is String)
+                r['name']! as String: (r['id']! as num).toInt(),
+          };
+    _attributeStackable = {
+      for (final r in attrIdToCategory)
+        if (r['id'] is num)
+          (r['id']! as num).toInt(): (r['stackable'] as num?)?.toInt() == 1,
     };
 
     final typeRows = await db
@@ -455,6 +667,11 @@ class TypesDatabase extends ChangeNotifier {
     return int.tryParse(rows.first['value']?.toString() ?? '');
   }
 
+  Future<bool> _columnExists(Database db, String table, String column) async {
+    final rows = await db.rawQuery('PRAGMA table_info($table)');
+    return rows.any((r) => r['name'] == column);
+  }
+
   Future<bool> _hasSchema(Database db) async {
     final rows = await db.query(
       'sqlite_master',
@@ -514,6 +731,8 @@ class TypesDatabase extends ChangeNotifier {
       final f = File(current);
       if (await f.exists()) await f.delete();
     }
+    _attributeIdByName = const {};
+    _attributeStackable = const {};
     _typeNames = const {};
     _groupNames = const {};
     _categoryNames = const {};
