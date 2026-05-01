@@ -7,7 +7,9 @@ import '../../clones/clones_providers.dart';
 import '../data/dto/fitting.dart';
 import '../domain/dogma_modifier.dart';
 import '../domain/fit_capacitor.dart';
+import '../domain/fit_compatibility.dart';
 import '../domain/fit_defense.dart';
+import '../domain/fit_misc.dart';
 import '../domain/fit_resources.dart';
 import '../domain/slot_grouping.dart';
 import '../fitting_providers.dart';
@@ -46,9 +48,27 @@ class FittingEditorBody extends ConsumerStatefulWidget {
   ConsumerState<FittingEditorBody> createState() => _FittingEditorBodyState();
 }
 
+/// Bundle of all three live computes. Hoisting them into one state
+/// blob means a single recompute pass per edit, and the compact
+/// summary bar at the top of the editor can render every key number
+/// from one source of truth.
+class _FitData {
+  const _FitData({
+    required this.resources,
+    required this.defense,
+    required this.capacitor,
+    required this.misc,
+  });
+
+  final FitResources resources;
+  final FitDefense defense;
+  final FitCapacitor capacitor;
+  final FitMisc misc;
+}
+
 class _FittingEditorBodyState extends ConsumerState<FittingEditorBody> {
-  Future<FitResources>? _future;
-  FitResources? _last;
+  Future<_FitData>? _future;
+  _FitData? _last;
 
   @override
   void initState() {
@@ -86,7 +106,7 @@ class _FittingEditorBodyState extends ConsumerState<FittingEditorBody> {
     setState(() => _future = _compute());
   }
 
-  Future<FitResources> _compute() async {
+  Future<_FitData> _compute() async {
     final cid = widget.characterId;
     final db = ref.read(typesDatabaseProvider);
     final skills = cid == null
@@ -95,111 +115,124 @@ class _FittingEditorBodyState extends ConsumerState<FittingEditorBody> {
     final pilotMods = cid == null
         ? const <int, List<Modifier>>{}
         : await ref.read(pilotShipModifiersProvider(cid).future);
-    return loadFitResources(
-      db: db,
-      shipTypeId: widget.shipTypeId,
-      items: widget.controller.items,
-      skills: skills,
-      pilotMods: pilotMods,
+    final items = widget.controller.items;
+
+    final results = await Future.wait<Object>([
+      loadFitResources(
+        db: db,
+        shipTypeId: widget.shipTypeId,
+        items: items,
+        skills: skills,
+        pilotMods: pilotMods,
+      ),
+      loadFitDefense(
+        db: db,
+        shipTypeId: widget.shipTypeId,
+        items: items,
+      ),
+      loadFitCapacitor(
+        db: db,
+        shipTypeId: widget.shipTypeId,
+        items: items,
+        pilotMods: pilotMods,
+      ),
+      loadFitMisc(
+        db: db,
+        shipTypeId: widget.shipTypeId,
+        pilotMods: pilotMods,
+      ),
+    ]);
+
+    return _FitData(
+      resources: results[0] as FitResources,
+      defense: results[1] as FitDefense,
+      capacitor: results[2] as FitCapacitor,
+      misc: results[3] as FitMisc,
     );
-  }
-
-  /// Builds the slot section list. For Hi/Med/Low/Rig we render rows
-  /// for *every* slot the ship has (using the maxima from [resources]),
-  /// not just the occupied ones — empty slots need to be tappable so
-  /// the user can fit a freshly-created empty fit. Other buckets
-  /// (drones, cargo, …) stay item-only since they don't have a fixed
-  /// slot count to lay out.
-  List<Widget> _buildSlotSections(
-    FittingEditorController ctrl,
-    Map<FittingSlot, List<FittingItem>> groups,
-    FitResources? resources,
-  ) {
-    const fixedSlots = [
-      FittingSlot.highSlot,
-      FittingSlot.medSlot,
-      FittingSlot.lowSlot,
-      FittingSlot.rigSlot,
-    ];
-
-    final sections = <Widget>[];
-    for (final slot in fixedSlots) {
-      final total = resources?.slots[slot]?.total ?? 0;
-      if (total <= 0) continue;
-      sections.add(Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: _SlotSection.fixed(
-          slot: slot,
-          total: total,
-          items: groups[slot] ?? const [],
-          resolveName: ctrl.resolveName,
-          onReplace: (flag) => _replaceSlot(slot, flag),
-          onRemove: (flag) => ctrl.removeModule(flag),
-        ),
-      ));
-    }
-
-    // Drone bay: always render (with an Add button) when the ship has
-    // any drone capacity, even if no drones are loaded yet.
-    final hasDroneBay = (resources?.droneBayMax ?? 0) > 0;
-    if (hasDroneBay || (groups[FittingSlot.drone]?.isNotEmpty ?? false)) {
-      sections.add(Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: _SlotSection.itemsOnly(
-          slot: FittingSlot.drone,
-          items: groups[FittingSlot.drone] ?? const [],
-          resolveName: ctrl.resolveName,
-          onAdd: _addDrone,
-          onEditStack: (item) => _editStack('DroneBay', item),
-        ),
-      ));
-    }
-
-    // Cargo: every ship has a hold, so always render once we have
-    // resources loaded.
-    final hasCargo = (resources?.cargoMax ?? 0) > 0;
-    if (hasCargo || (groups[FittingSlot.cargo]?.isNotEmpty ?? false)) {
-      sections.add(Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: _SlotSection.itemsOnly(
-          slot: FittingSlot.cargo,
-          items: groups[FittingSlot.cargo] ?? const [],
-          resolveName: ctrl.resolveName,
-          onAdd: _addCargo,
-          onEditStack: (item) => _editStack('Cargo', item),
-        ),
-      ));
-    }
-
-    for (final entry in groups.entries) {
-      if (fixedSlots.contains(entry.key)) continue;
-      if (entry.key == FittingSlot.drone) continue;
-      if (entry.key == FittingSlot.cargo) continue;
-      sections.add(Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: _SlotSection.itemsOnly(
-          slot: entry.key,
-          items: entry.value,
-          resolveName: ctrl.resolveName,
-        ),
-      ));
-    }
-
-    return sections;
   }
 
   Future<void> _replaceSlot(FittingSlot slot, String flag) async {
-    final picked = await Navigator.of(context).push<int>(
+    final fitted = widget.controller.items
+        .where((it) => it.flag == flag)
+        .firstOrNull;
+    final result = await Navigator.of(context).push<ModulePickerResult>(
       MaterialPageRoute(
         builder: (_) => ModulePickerScreen(
           slot: slot,
-          shipTypeId: widget.shipTypeId,
+          fittedTypeId: fitted?.typeId,
         ),
       ),
     );
-    if (picked == null) return;
-    final name = ref.read(typesDatabaseProvider).lookup(picked);
+    if (result == null) return;
+    if (result is ModuleRemoved) {
+      widget.controller.removeModule(flag);
+      return;
+    }
+    final picked = (result as ModulePicked).typeId;
+    final db = ref.read(typesDatabaseProvider);
+    final conflicts = await validateModuleFit(
+      db: db,
+      moduleTypeId: picked,
+      shipTypeId: widget.shipTypeId,
+      slot: slot,
+      currentItems: widget.controller.items,
+    );
+    if (conflicts.isNotEmpty) {
+      if (!mounted) return;
+      final proceed = await _showConflictDialog(picked, conflicts);
+      if (proceed != true) return;
+    }
+    final name = db.lookup(picked);
     widget.controller.replaceModule(flag, picked, typeName: name);
+  }
+
+  Future<bool?> _showConflictDialog(
+    int moduleTypeId,
+    List<FitConflict> conflicts,
+  ) {
+    final name = ref
+            .read(typesDatabaseProvider)
+            .lookup(moduleTypeId) ??
+        'Module';
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Not compatible'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              name,
+              style: Theme.of(ctx).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 12),
+            for (final c in conflicts)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text('• ${c.message}'),
+              ),
+            const SizedBox(height: 12),
+            Text(
+              'Fit anyway?',
+              style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(ctx).hintColor,
+                  ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Fit anyway'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _addDrone() async {
@@ -210,6 +243,8 @@ class _FittingEditorBodyState extends ConsumerState<FittingEditorBody> {
           hintText: 'Search drones',
           search: (db, q) =>
               db.searchTypesByCategory(categoryId: 18, query: q),
+          // Market group 157 = "Drones".
+          rootMarketGroupId: 157,
         ),
       ),
     );
@@ -281,159 +316,116 @@ class _FittingEditorBodyState extends ConsumerState<FittingEditorBody> {
     final ctrl = widget.controller;
     final groups = groupBySlot(ctrl.items);
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                EveTypeImage(
-                  typeId: widget.shipTypeId,
-                  kind: EveTypeImageKind.render,
-                  size: 96,
-                  borderRadius: BorderRadius.circular(8),
+    return FutureBuilder<_FitData>(
+      future: _future,
+      builder: (context, snap) {
+        if (snap.hasData) _last = snap.data;
+        final data = _last;
+
+        return CustomScrollView(
+          slivers: [
+            // Hero card with key stats fused in — saves the height
+            // of the old separate summary bar, and the panels below
+            // (Resources + Defense expanded) carry the rest.
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+                child: _CompactHero(
+                  shipTypeId: widget.shipTypeId,
+                  shipName: widget.shipName,
+                  description: widget.description,
+                  data: data,
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'SHIP',
-                        style:
-                            Theme.of(context).textTheme.labelSmall?.copyWith(
-                                  letterSpacing: 1.2,
-                                  color:
-                                      Theme.of(context).colorScheme.primary,
-                                ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        widget.shipName,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      if (widget.description.trim().isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          widget.description,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
-        if (widget.characterId != null) ...[
-          const SizedBox(height: 16),
-          _ImplantsCard(characterId: widget.characterId!),
-        ],
-        const SizedBox(height: 16),
-        _DefenseCard(
-          shipTypeId: widget.shipTypeId,
-          items: ctrl.items,
-        ),
-        const SizedBox(height: 16),
-        _CapacitorCard(
-          shipTypeId: widget.shipTypeId,
-          items: ctrl.items,
-          characterId: widget.characterId,
-        ),
-        const SizedBox(height: 16),
-        FutureBuilder<FitResources>(
-          future: _future,
-          builder: (context, snap) {
-            if (snap.hasData) _last = snap.data;
-            final r = _last;
-            return Column(
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                    child: r == null
-                        ? const SizedBox(
-                            height: 80,
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        : _ResourcesContent(resources: r),
-                  ),
+            SliverList(
+              delegate: SliverChildListDelegate([
+                _SlotsCard(
+                  shipTypeId: widget.shipTypeId,
+                  items: ctrl.items,
+                  groups: groups,
+                  resources: data?.resources,
+                  onReplaceSlot: _replaceSlot,
+                  onRemoveSlot: ctrl.removeModule,
                 ),
+                if ((data?.resources.droneBayMax ?? 0) > 0 ||
+                    (groups[FittingSlot.drone]?.isNotEmpty ?? false))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _StackStripCard(
+                      title: 'DRONES',
+                      iconAsset: 'drones',
+                      items: groups[FittingSlot.drone] ?? const [],
+                      resolveName: ctrl.resolveName,
+                      onAdd: _addDrone,
+                      onEditStack: (item) => _editStack('DroneBay', item),
+                    ),
+                  ),
+                if ((data?.resources.cargoMax ?? 0) > 0 ||
+                    (groups[FittingSlot.cargo]?.isNotEmpty ?? false))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _StackStripCard(
+                      title: 'CARGO',
+                      iconAsset: 'cargo',
+                      items: groups[FittingSlot.cargo] ?? const [],
+                      resolveName: ctrl.resolveName,
+                      onAdd: _addCargo,
+                      onEditStack: (item) => _editStack('Cargo', item),
+                    ),
+                  ),
+                if (widget.characterId != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _ImplantsCard(characterId: widget.characterId!),
+                  ),
+                // Stat panels — plain cards without titles. The hero
+                // already gives the at-a-glance numbers; these are the
+                // detailed breakdowns for players who want them.
+                if (data != null) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _StatCard(
+                      child: _ResourcesContent(resources: data.resources),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _StatCard(
+                      child: _DefenseContent(
+                        theme: Theme.of(context),
+                        defense: data.defense,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _StatCard(
+                      child: _CapacitorContent(
+                        theme: Theme.of(context),
+                        capacitor: data.capacitor,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _StatCard(
+                      child: _TargetingContent(misc: data.misc),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: _StatCard(
+                      child: _NavigationContent(misc: data.misc),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
-                ..._buildSlotSections(ctrl, groups, r),
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
-/// HP, resistances and EHP for the three defense layers — computed
-/// from base ship attributes only. Module hardeners will fold in once
-/// the dogma engine routes their effects through the modifier
-/// framework.
-class _DefenseCard extends ConsumerStatefulWidget {
-  const _DefenseCard({required this.shipTypeId, required this.items});
-
-  final int shipTypeId;
-  final List<FittingItem> items;
-
-  @override
-  ConsumerState<_DefenseCard> createState() => _DefenseCardState();
-}
-
-class _DefenseCardState extends ConsumerState<_DefenseCard> {
-  Future<FitDefense>? _future;
-  FitDefense? _last;
-
-  Future<FitDefense> _compute() => loadFitDefense(
-        db: ref.read(typesDatabaseProvider),
-        shipTypeId: widget.shipTypeId,
-        items: widget.items,
-      );
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _future ??= _compute();
-  }
-
-  @override
-  void didUpdateWidget(covariant _DefenseCard old) {
-    super.didUpdateWidget(old);
-    if (old.shipTypeId != widget.shipTypeId ||
-        !identical(old.items, widget.items)) {
-      setState(() => _future = _compute());
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: FutureBuilder<FitDefense>(
-          future: _future,
-          builder: (context, snap) {
-            if (snap.hasData) _last = snap.data;
-            final d = _last;
-            if (d == null) {
-              return const SizedBox(
-                height: 80,
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            return _DefenseContent(theme: theme, defense: d);
-          },
-        ),
-      ),
+              ]),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -447,148 +439,132 @@ class _DefenseContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const profile = DamageProfile.omni;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Table(
+      columnWidths: const {
+        0: FlexColumnWidth(),
+        1: FixedColumnWidth(48),
+        2: FixedColumnWidth(48),
+        3: FixedColumnWidth(48),
+        4: FixedColumnWidth(48),
+      },
+      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
       children: [
-        Row(
+        // Header row holds total EHP on the left and the four damage
+        // type icons across the right — keeps the card compact by
+        // sharing a row instead of stacking another above the table.
+        TableRow(
           children: [
-            Expanded(
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: Text(
-                'DEFENSE',
-                style: theme.textTheme.labelSmall?.copyWith(
-                      letterSpacing: 1.2,
+                '${_fmtInt(defense.totalEhp(profile))} EHP',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()],
                       color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
                     ),
               ),
             ),
-            Text(
-              'omni profile',
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
-            ),
+            const _ResistHeader(iconAsset: 'resist_em'),
+            const _ResistHeader(iconAsset: 'resist_thermal'),
+            const _ResistHeader(iconAsset: 'resist_kinetic'),
+            const _ResistHeader(iconAsset: 'resist_explosive'),
           ],
         ),
-        const SizedBox(height: 10),
-        _LayerRow(
-          label: 'Shield',
-          iconAsset: 'shield',
-          layer: defense.shield,
-          profile: profile,
+        _layerRow('shield', defense.shield, profile),
+        _layerRow('armor', defense.armor, profile),
+        _layerRow('hull', defense.hull, profile),
+      ],
+    );
+  }
+
+  TableRow _layerRow(
+    String iconAsset,
+    DefenseLayer layer,
+    DamageProfile profile,
+  ) {
+    final r = layer.resonances;
+    return TableRow(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              FittingIcon(name: iconAsset, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                '${_fmtInt(layer.hp)} hp',
+                style: theme.textTheme.bodySmall?.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 6),
-        _LayerRow(
-          label: 'Armor',
-          iconAsset: 'armor',
-          layer: defense.armor,
-          profile: profile,
-        ),
-        const SizedBox(height: 6),
-        _LayerRow(
-          label: 'Hull',
-          iconAsset: 'hull',
-          layer: defense.hull,
-          profile: profile,
-        ),
-        const Divider(height: 18),
-        Row(
-          children: [
-            Text('Total EHP', style: theme.textTheme.bodyMedium),
-            const Spacer(),
-            Text(
-              _fmtInt(defense.totalEhp(profile)),
-              style: theme.textTheme.titleMedium?.copyWith(
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-            ),
-          ],
-        ),
+        _ResistCell(resonance: r.em, tint: const Color(0xFF6FB5FF)),
+        _ResistCell(resonance: r.thermal, tint: const Color(0xFFFF6B6B)),
+        _ResistCell(resonance: r.kinetic, tint: const Color(0xFFCFD8DC)),
+        _ResistCell(resonance: r.explosive, tint: const Color(0xFFFFC95C)),
       ],
     );
   }
 }
 
-class _LayerRow extends StatelessWidget {
-  const _LayerRow({
-    required this.label,
-    required this.iconAsset,
-    required this.layer,
-    required this.profile,
-  });
+class _ResistHeader extends StatelessWidget {
+  const _ResistHeader({required this.iconAsset});
 
-  final String label;
   final String iconAsset;
-  final DefenseLayer layer;
-  final DamageProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Center(child: FittingIcon(name: iconAsset, size: 18)),
+    );
+  }
+}
+
+class _ResistCell extends StatelessWidget {
+  const _ResistCell({required this.resonance, required this.tint});
+
+  final double resonance;
+  final Color tint;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final r = layer.resonances;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    final pct = ((1 - resonance) * 100).round();
+    final ratio = (pct / 100).clamp(0.0, 1.0);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+      child: Container(
+        height: 24,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(3),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
           children: [
-            FittingIcon(name: iconAsset, size: 22),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 60,
-              child: Text(label, style: theme.textTheme.bodyMedium),
+            // Damage-type tinted fill, width proportional to resist
+            // percent — gives an at-a-glance read of "how covered is
+            // this damage type" without the user parsing numbers.
+            FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: ratio,
+              child: Container(color: tint.withValues(alpha: 0.55)),
             ),
-            Text(
-              '${_fmtInt(layer.hp)} hp',
-              style: theme.textTheme.bodySmall,
-            ),
-            const Spacer(),
-            Text(
-              '${_fmtInt(layer.ehp(profile))} EHP',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+            Center(
+              child: Text(
+                '$pct%',
+                style: theme.textTheme.bodySmall?.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 2),
-        Padding(
-          padding: const EdgeInsets.only(left: 30),
-          child: DefaultTextStyle(
-            style: theme.textTheme.bodySmall!.copyWith(
-                  color: theme.hintColor,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-            child: Row(
-              children: [
-                _ResistChip(iconAsset: 'resist_em', resonance: r.em),
-                _ResistChip(iconAsset: 'resist_thermal', resonance: r.thermal),
-                _ResistChip(iconAsset: 'resist_kinetic', resonance: r.kinetic),
-                _ResistChip(
-                    iconAsset: 'resist_explosive', resonance: r.explosive),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ResistChip extends StatelessWidget {
-  const _ResistChip({required this.iconAsset, required this.resonance});
-
-  final String iconAsset;
-  final double resonance;
-
-  @override
-  Widget build(BuildContext context) {
-    final pct = ((1 - resonance) * 100).round();
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FittingIcon(name: iconAsset, size: 14),
-          const SizedBox(width: 4),
-          Text('$pct%'),
-        ],
       ),
     );
   }
@@ -598,80 +574,6 @@ String _fmtInt(double v) {
   if (v >= 100000) return '${(v / 1000).toStringAsFixed(0)}k';
   if (v >= 10000) return '${(v / 1000).toStringAsFixed(1)}k';
   return v.toStringAsFixed(0);
-}
-
-class _CapacitorCard extends ConsumerStatefulWidget {
-  const _CapacitorCard({
-    required this.shipTypeId,
-    required this.items,
-    required this.characterId,
-  });
-
-  final int shipTypeId;
-  final List<FittingItem> items;
-  final int? characterId;
-
-  @override
-  ConsumerState<_CapacitorCard> createState() => _CapacitorCardState();
-}
-
-class _CapacitorCardState extends ConsumerState<_CapacitorCard> {
-  Future<FitCapacitor>? _future;
-  FitCapacitor? _last;
-
-  Future<FitCapacitor> _compute() async {
-    final db = ref.read(typesDatabaseProvider);
-    final cid = widget.characterId;
-    final pilotMods = cid == null
-        ? const <int, List<Modifier>>{}
-        : await ref.read(pilotShipModifiersProvider(cid).future);
-    return loadFitCapacitor(
-      db: db,
-      shipTypeId: widget.shipTypeId,
-      items: widget.items,
-      pilotMods: pilotMods,
-    );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _future ??= _compute();
-  }
-
-  @override
-  void didUpdateWidget(covariant _CapacitorCard old) {
-    super.didUpdateWidget(old);
-    if (old.shipTypeId != widget.shipTypeId ||
-        !identical(old.items, widget.items) ||
-        old.characterId != widget.characterId) {
-      setState(() => _future = _compute());
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: FutureBuilder<FitCapacitor>(
-          future: _future,
-          builder: (context, snap) {
-            if (snap.hasData) _last = snap.data;
-            final c = _last;
-            if (c == null) {
-              return const SizedBox(
-                height: 80,
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            return _CapacitorContent(theme: theme, capacitor: c);
-          },
-        ),
-      ),
-    );
-  }
 }
 
 class _CapacitorContent extends StatelessWidget {
@@ -696,26 +598,14 @@ class _CapacitorContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const FittingIcon(name: 'capacitor', size: 22),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'CAPACITOR',
-                style: theme.textTheme.labelSmall?.copyWith(
-                      letterSpacing: 1.2,
-                      color: scheme.primary,
-                    ),
-              ),
-            ),
-            Text(
-              summary,
-              style: theme.textTheme.titleMedium?.copyWith(color: summaryColor),
-            ),
-          ],
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            summary,
+            style: theme.textTheme.bodyMedium?.copyWith(color: summaryColor),
+          ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         _CapRow(
           label: 'Capacity',
           value:
@@ -858,15 +748,9 @@ class _ResourcesContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final labelStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
-          letterSpacing: 1.2,
-          color: Theme.of(context).colorScheme.primary,
-        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('RESOURCES', style: labelStyle),
-        const SizedBox(height: 12),
         _ResourceBar(
           label: 'CPU',
           iconAsset: 'cpu',
@@ -892,21 +776,6 @@ class _ResourcesContent extends StatelessWidget {
             unit: '',
           ),
         ],
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 12,
-          runSpacing: 6,
-          children: [
-            for (final entry in resources.slots.entries)
-              _SlotPill(label: _slotLabel(entry.key), usage: entry.value),
-            if (resources.turretHardpoints.total > 0 ||
-                resources.turretHardpoints.used > 0)
-              _SlotPill(label: 'Turret', usage: resources.turretHardpoints),
-            if (resources.launcherHardpoints.total > 0 ||
-                resources.launcherHardpoints.used > 0)
-              _SlotPill(label: 'Launcher', usage: resources.launcherHardpoints),
-          ],
-        ),
         if (resources.cargoMax > 0) ...[
           const SizedBox(height: 8),
           _ResourceBar(
@@ -941,15 +810,6 @@ class _ResourcesContent extends StatelessWidget {
     );
   }
 }
-
-String _slotLabel(FittingSlot slot) => switch (slot) {
-      FittingSlot.highSlot => 'Hi',
-      FittingSlot.medSlot => 'Med',
-      FittingSlot.lowSlot => 'Low',
-      FittingSlot.rigSlot => 'Rig',
-      FittingSlot.subsystem => 'Sub',
-      _ => slot.title,
-    };
 
 class _ResourceBar extends StatelessWidget {
   const _ResourceBar({
@@ -1019,33 +879,6 @@ class _ResourceBar extends StatelessWidget {
   }
 }
 
-class _SlotPill extends StatelessWidget {
-  const _SlotPill({required this.label, required this.usage});
-
-  final String label;
-  final SlotUsage usage;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final over = usage.used > usage.total;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: over ? scheme.errorContainer : scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        '$label ${usage.used}/${usage.total}',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: over ? scheme.onErrorContainer : null,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-      ),
-    );
-  }
-}
-
 /// Result of the drone/cargo stack-edit dialog.
 class _StackEdit {
   const _StackEdit.set(this.quantity) : delete = false;
@@ -1066,167 +899,667 @@ String _slotFlagPrefix(FittingSlot slot) => switch (slot) {
       _ => '',
     };
 
-class _SlotSection extends StatelessWidget {
-  /// Renders [total] rows for a slot kind that has a fixed in-game
-  /// layout (Hi/Med/Low/Rig). Empty slots get a tappable placeholder
-  /// so the user can fit a fresh, blank fit.
-  const _SlotSection.fixed({
+/// Compact ship hero — a small render plus the ship name. The
+/// description (when set) lives in a `Tooltip` so it doesn't eat
+/// vertical space on the main view.
+/// Hero card for the ship — render + name + description on one line,
+/// plus a compact stat row at the bottom (CPU%, PG%, EHP, cap
+/// stability) so the user always sees the at-a-glance numbers without
+/// a separate pinned bar.
+class _CompactHero extends StatelessWidget {
+  const _CompactHero({
+    required this.shipTypeId,
+    required this.shipName,
+    required this.description,
+    required this.data,
+  });
+
+  final int shipTypeId;
+  final String shipName;
+  final String description;
+  final _FitData? data;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final subtitle = description.trim();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            EveTypeImage(
+              typeId: shipTypeId,
+              kind: EveTypeImageKind.render,
+              size: 64,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    shipName,
+                    style: theme.textTheme.titleMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (subtitle.isNotEmpty)
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.hintColor),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  const SizedBox(height: 6),
+                  if (data != null) _HeroStatsRow(data: data!),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroStatsRow extends StatelessWidget {
+  const _HeroStatsRow({required this.data});
+
+  final _FitData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final r = data.resources;
+    final ehp = data.defense.totalEhp(DamageProfile.omni);
+    final cap = data.capacitor;
+    final capLabel = cap.stable
+        ? (cap.stablePercent == null
+            ? 'Stable'
+            : '${(cap.stablePercent! * 100).toStringAsFixed(0)}%')
+        : (cap.secondsToEmpty == null
+            ? 'Out'
+            : _fmtDuration(cap.secondsToEmpty!));
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _SummaryStat(
+          iconAsset: 'cpu',
+          value: _pctOrDash(r.cpuUsed, r.cpuMax),
+          over: r.cpuUsed > r.cpuMax,
+        ),
+        _SummaryStat(
+          iconAsset: 'powergrid',
+          value: _pctOrDash(r.powerUsed, r.powerMax),
+          over: r.powerUsed > r.powerMax,
+        ),
+        _SummaryStat(
+          iconAsset: 'shield',
+          value: '${_fmtInt(ehp)} EHP',
+        ),
+        _SummaryStat(
+          iconAsset: 'capacitor',
+          value: capLabel,
+          color: cap.stable
+              ? theme.colorScheme.primary
+              : theme.colorScheme.error,
+        ),
+      ],
+    );
+  }
+
+  String _pctOrDash(double used, double max) {
+    if (max <= 0) return '—';
+    final pct = (used / max * 100).clamp(0, 999).round();
+    return '$pct%';
+  }
+}
+
+class _SummaryStat extends StatelessWidget {
+  const _SummaryStat({
+    required this.iconAsset,
+    required this.value,
+    this.over = false,
+    this.color,
+  });
+
+  final String iconAsset;
+  final String value;
+  final bool over;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final effective = over ? theme.colorScheme.error : color;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FittingIcon(name: iconAsset, size: 16),
+        const SizedBox(width: 4),
+        Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+                color: effective,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One card holding the four fixed slot strips (Hi/Med/Low/Rig). Each
+/// strip is a compact horizontal row of 40-pt squares — same shape as
+/// the in-game fitting window. Tapping a square opens the picker;
+/// long-press removes a fitted module.
+class _SlotsCard extends StatelessWidget {
+  const _SlotsCard({
+    required this.shipTypeId,
+    required this.items,
+    required this.groups,
+    required this.resources,
+    required this.onReplaceSlot,
+    required this.onRemoveSlot,
+  });
+
+  final int shipTypeId;
+  final List<FittingItem> items;
+  final Map<FittingSlot, List<FittingItem>> groups;
+  final FitResources? resources;
+  final Future<void> Function(FittingSlot slot, String flag) onReplaceSlot;
+  final void Function(String flag) onRemoveSlot;
+
+  static const _fixedSlots = [
+    FittingSlot.highSlot,
+    FittingSlot.medSlot,
+    FittingSlot.lowSlot,
+    FittingSlot.rigSlot,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final r = resources;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Column(
+            children: [
+              for (final slot in _fixedSlots)
+                if ((r?.slots[slot]?.total ?? 0) > 0 ||
+                    (groups[slot]?.isNotEmpty ?? false))
+                  _SlotStrip(
+                    slot: slot,
+                    total: r?.slots[slot]?.total ?? 0,
+                    items: groups[slot] ?? const [],
+                    rightSide: _slotStripRight(slot, r),
+                    onTap: (flag) => onReplaceSlot(slot, flag),
+                    onLongPress: onRemoveSlot,
+                  ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget? _slotStripRight(FittingSlot slot, FitResources? r) {
+    if (r == null) return null;
+    switch (slot) {
+      case FittingSlot.highSlot:
+        final th = r.turretHardpoints;
+        final lh = r.launcherHardpoints;
+        return Wrap(
+          spacing: 8,
+          children: [
+            if (th.total > 0 || th.used > 0)
+              _MiniBadge(
+                iconAsset: 'turret',
+                text: '${th.used}/${th.total}',
+                over: th.used > th.total,
+              ),
+            if (lh.total > 0 || lh.used > 0)
+              _MiniBadge(
+                iconAsset: 'launcher',
+                text: '${lh.used}/${lh.total}',
+                over: lh.used > lh.total,
+              ),
+          ],
+        );
+      case FittingSlot.rigSlot:
+        if (r.calibrationMax <= 0) return null;
+        return _MiniBadge(
+          iconAsset: 'rigslot',
+          text: '${r.calibrationUsed.toStringAsFixed(0)}/'
+              '${r.calibrationMax.toStringAsFixed(0)}',
+          over: r.calibrationUsed > r.calibrationMax,
+        );
+      default:
+        return null;
+    }
+  }
+}
+
+class _SlotStrip extends StatelessWidget {
+  const _SlotStrip({
     required this.slot,
     required this.total,
     required this.items,
-    required this.resolveName,
-    required this.onReplace,
-    required this.onRemove,
-  })  : onAdd = null,
-        onEditStack = null,
-        _itemsOnly = false;
-
-  /// Renders the section as the simple item list — used for buckets
-  /// that don't have a fixed slot count to draw placeholders for
-  /// (drones, cargo, …). Pass [onAdd] to surface a "+" affordance and
-  /// [onEditStack] to make rows tappable for quantity edit / remove.
-  const _SlotSection.itemsOnly({
-    required this.slot,
-    required this.items,
-    required this.resolveName,
-    this.onAdd,
-    this.onEditStack,
-  })  : total = 0,
-        onReplace = null,
-        onRemove = null,
-        _itemsOnly = true;
+    required this.onTap,
+    required this.onLongPress,
+    this.rightSide,
+  });
 
   final FittingSlot slot;
   final int total;
   final List<FittingItem> items;
+  final void Function(String flag) onTap;
+  final void Function(String flag) onLongPress;
+  final Widget? rightSide;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final byFlag = {for (final it in items) it.flag: it};
+    final prefix = _slotFlagPrefix(slot);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 36,
+            child: Text(
+              _slotShortLabel(slot),
+              style: theme.textTheme.labelSmall?.copyWith(
+                    letterSpacing: 0.6,
+                    color: theme.hintColor,
+                  ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (var i = 0; i < total; i++)
+                  _SlotSquare(
+                    item: byFlag['$prefix$i'],
+                    onTap: () => onTap('$prefix$i'),
+                    onLongPress: () => onLongPress('$prefix$i'),
+                  ),
+              ],
+            ),
+          ),
+          if (rightSide != null) ...[
+            const SizedBox(width: 8),
+            DefaultTextStyle.merge(
+              style: theme.textTheme.bodySmall ?? const TextStyle(),
+              child: rightSide!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _slotShortLabel(FittingSlot slot) => switch (slot) {
+      FittingSlot.highSlot => 'High',
+      FittingSlot.medSlot => 'Mid',
+      FittingSlot.lowSlot => 'Low',
+      FittingSlot.rigSlot => 'Rig',
+      FittingSlot.subsystem => 'Sub',
+      _ => '',
+    };
+
+class _SlotSquare extends StatelessWidget {
+  const _SlotSquare({
+    required this.item,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final FittingItem? item;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 40.0;
+    final theme = Theme.of(context);
+    final fitted = item != null;
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: onTap,
+      onLongPress: fitted ? onLongPress : null,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: fitted
+                ? theme.colorScheme.outlineVariant
+                : theme.dividerColor,
+          ),
+          color: fitted ? theme.colorScheme.surfaceContainerHighest : null,
+        ),
+        alignment: Alignment.center,
+        child: fitted
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: EveTypeImage(typeId: item!.typeId, size: size - 6),
+              )
+            : Icon(Icons.add, size: 18, color: theme.hintColor),
+      ),
+    );
+  }
+}
+
+class _MiniBadge extends StatelessWidget {
+  const _MiniBadge({
+    required this.iconAsset,
+    required this.text,
+    this.over = false,
+  });
+
+  final String iconAsset;
+  final String text;
+  final bool over;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FittingIcon(name: iconAsset, size: 14),
+        const SizedBox(width: 3),
+        Text(
+          text,
+          style: theme.textTheme.bodySmall?.copyWith(
+                color: over ? theme.colorScheme.error : null,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Compact horizontal strip for stack-shaped buckets (drone bay,
+/// cargo). Each stack is rendered as a slot square with a quantity
+/// badge in the top-right corner; tap edits the stack, long-press
+/// removes it. The trailing `+` square opens the type picker.
+class _StackStripCard extends StatelessWidget {
+  const _StackStripCard({
+    required this.title,
+    required this.iconAsset,
+    required this.items,
+    required this.resolveName,
+    required this.onAdd,
+    required this.onEditStack,
+  });
+
+  final String title;
+  final String iconAsset;
+  final List<FittingItem> items;
   final String Function(int) resolveName;
-  final void Function(String flag)? onReplace;
-  final void Function(String flag)? onRemove;
-  final VoidCallback? onAdd;
-  final void Function(FittingItem item)? onEditStack;
-  final bool _itemsOnly;
+  final VoidCallback onAdd;
+  final void Function(FittingItem item) onEditStack;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    slot.title.toUpperCase(),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                          letterSpacing: 1.2,
-                          color: theme.colorScheme.primary,
-                        ),
-                  ),
+                FittingIcon(name: iconAsset, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                        letterSpacing: 1.2,
+                        color: theme.colorScheme.primary,
+                      ),
                 ),
-                if (_itemsOnly && onAdd != null)
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Add',
-                    onPressed: onAdd,
-                    icon: const Icon(Icons.add),
-                  ),
               ],
             ),
             const SizedBox(height: 8),
-            if (_itemsOnly) ..._itemsOnlyRows(theme) else ..._fixedRows(theme),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final it in items)
+                  _StackSquare(
+                    item: it,
+                    onTap: () => onEditStack(it),
+                  ),
+                _SlotSquare(
+                  item: null,
+                  onTap: onAdd,
+                  onLongPress: () {},
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
+}
 
-  Iterable<Widget> _itemsOnlyRows(ThemeData theme) sync* {
-    if (items.isEmpty && onAdd != null) {
-      yield Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Text(
-          'Empty — tap + to add',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+class _StackSquare extends StatelessWidget {
+  const _StackSquare({required this.item, required this.onTap});
+
+  final FittingItem item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 40.0;
+    final theme = Theme.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: onTap,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+                color: theme.colorScheme.surfaceContainerHighest,
+              ),
+              alignment: Alignment.center,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: EveTypeImage(typeId: item.typeId, size: size - 6),
+              ),
+            ),
+            if (item.quantity > 1)
+              Positioned(
+                right: -4,
+                top: -4,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${item.quantity}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onPrimaryContainer,
+                          fontFeatures: const [
+                            FontFeature.tabularFigures()
+                          ],
+                        ),
+                  ),
+                ),
+              ),
+          ],
         ),
-      );
-      return;
-    }
-    for (final it in items) {
-      final row = _occupiedRow(theme, it);
-      final cb = onEditStack;
-      yield cb == null ? row : InkWell(onTap: () => cb(it), child: row);
-    }
+      ),
+    );
   }
+}
 
-  Iterable<Widget> _fixedRows(ThemeData theme) sync* {
-    final byFlag = {for (final it in items) it.flag: it};
-    final prefix = _slotFlagPrefix(slot);
-    for (var i = 0; i < total; i++) {
-      final flag = '$prefix$i';
-      final item = byFlag[flag];
-      yield InkWell(
-        onTap: () => onReplace?.call(flag),
-        onLongPress: item == null ? null : () => onRemove?.call(flag),
-        child: item == null
-            ? _emptyRow(theme)
-            : _occupiedRow(theme, item),
-      );
-    }
+/// Targeting / sensor stats — same compact key/value layout as the
+/// Capacitor card.
+class _TargetingContent extends StatelessWidget {
+  const _TargetingContent({required this.misc});
+
+  final FitMisc misc;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _MiscRow(
+          iconAsset: 'targeting_range',
+          label: 'Targeting range',
+          value: '${_fmtKm(misc.targetingRangeKm)} km',
+        ),
+        _MiscRow(
+          iconAsset: 'max_targets',
+          label: 'Locked targets',
+          value: '${misc.maxLockedTargets}',
+        ),
+        _MiscRow(
+          iconAsset: 'scan_res',
+          label: 'Scan resolution',
+          value: '${_fmtNum(misc.scanResolutionMm)} mm',
+        ),
+        _MiscRow(
+          iconAsset: 'signature_radius',
+          label: 'Signature radius',
+          value: '${_fmtNum(misc.signatureRadius)} m',
+        ),
+        if (misc.sensorStrength > 0)
+          _MiscRow(
+            label: 'Sensor strength',
+            value: _fmtNum(misc.sensorStrength),
+          ),
+      ],
+    );
   }
+}
 
-  Widget _emptyRow(ThemeData theme) {
+/// Navigation stats — velocity, warp speed, align time.
+class _NavigationContent extends StatelessWidget {
+  const _NavigationContent({required this.misc});
+
+  final FitMisc misc;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _MiscRow(
+          iconAsset: 'velocity',
+          label: 'Max velocity',
+          value: '${_fmtNum(misc.maxVelocity)} m/s',
+        ),
+        _MiscRow(
+          iconAsset: 'warp_speed',
+          label: 'Warp speed',
+          value: '${misc.warpSpeed.toStringAsFixed(2)} AU/s',
+        ),
+        _MiscRow(
+          iconAsset: 'align_time',
+          label: 'Align time',
+          value: '${misc.alignTimeSeconds.toStringAsFixed(2)} s',
+        ),
+      ],
+    );
+  }
+}
+
+class _MiscRow extends StatelessWidget {
+  const _MiscRow({
+    required this.label,
+    required this.value,
+    this.iconAsset,
+  });
+
+  final String label;
+  final String value;
+  final String? iconAsset;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: theme.dividerColor),
-            ),
-            child: Icon(Icons.add, size: 18, color: theme.hintColor),
+          if (iconAsset != null) ...[
+            FittingIcon(name: iconAsset!, size: 16),
+            const SizedBox(width: 8),
+          ] else
+            const SizedBox(width: 24),
+          Expanded(
+            child: Text(label, style: theme.textTheme.bodySmall),
           ),
-          const SizedBox(width: 12),
           Text(
-            'Empty',
+            value,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.hintColor,
-              fontStyle: FontStyle.italic,
-            ),
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _occupiedRow(ThemeData theme, FittingItem it) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          EveTypeImage(
-            typeId: it.typeId,
-            size: 32,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              resolveName(it.typeId),
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
-          if (it.quantity > 1)
-            Text(
-              '×${it.quantity}',
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
-            ),
-        ],
+String _fmtKm(double v) {
+  if (v >= 100) return v.toStringAsFixed(0);
+  if (v >= 10) return v.toStringAsFixed(1);
+  return v.toStringAsFixed(2);
+}
+
+/// Plain card wrapper around a stat panel — no title, no expansion.
+/// Players know shield/armor/hull and CPU/PG by sight; spelling out
+/// "Resources" / "Defense" above the content is just chrome. Padding
+/// mirrors the slots card so the columns line up across blocks.
+class _StatCard extends StatelessWidget {
+  const _StatCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: child,
       ),
     );
   }

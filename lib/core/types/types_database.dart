@@ -61,6 +61,7 @@ class TypesDatabase extends ChangeNotifier {
 
   Map<int, int?> _groupCategory = const {};
   Map<int, int?> _typeGroup = const {};
+  Map<int, int?> _typeMarketGroup = const {};
   Map<int, List<int>> _typesByGroup = const {};
   Map<int, List<int>> _groupsByCategory = const {};
   Map<int, int?> _marketGroupParent = const {};
@@ -87,6 +88,10 @@ class TypesDatabase extends ChangeNotifier {
   int? groupCategoryId(int id) => _groupCategory[id];
   String? lookupCategory(int id) => _categoryNames[id];
   String? lookupMarketGroup(int id) => _marketGroupNames[id];
+
+  /// Direct market group of a type, when it has one. Skills, NPCs and
+  /// other internal types return null.
+  int? typeMarketGroupId(int typeId) => _typeMarketGroup[typeId];
   String? lookupSystem(int id) => _systemNames[id];
 
   /// Pre-composed display name for an NPC station id (e.g. "Jita IV -
@@ -117,6 +122,18 @@ class TypesDatabase extends ChangeNotifier {
   /// by the dogma engine to find modifier-source and modifier-target
   /// attributes without hardcoding numeric ids.
   int? attributeIdByName(String name) => _attributeIdByName[name];
+
+  /// Returns every attribute id whose canonical name starts with
+  /// [prefix] — handy for dynamic discovery of attribute *families*
+  /// (e.g. `canFitShipGroup1..N`, `canFitShipType1..N`). Empty when
+  /// the SDE doesn't ship the `name` column yet; the caller should
+  /// fall back to a hardcoded list in that case.
+  List<int> attributeIdsByNamePrefix(String prefix) {
+    return [
+      for (final entry in _attributeIdByName.entries)
+        if (entry.key.startsWith(prefix)) entry.value,
+    ];
+  }
 
   /// Whether the attribute is stackable (no penalty applies). Maps to
   /// the SDE's `stackable` flag on the attribute. Defaults to false
@@ -182,6 +199,10 @@ class TypesDatabase extends ChangeNotifier {
     int limit = 250,
     String? lang,
     int? rigSize,
+    int? shipTypeId,
+    int? shipGroupId,
+    double? shipCpuOutput,
+    double? shipPowerOutput,
   }) async {
     final db = _db;
     if (db == null) return const [];
@@ -213,6 +234,71 @@ class TypesDatabase extends ChangeNotifier {
         )
       ''';
       args.add(rigSize);
+    }
+    if (shipGroupId != null) {
+      // canFitShipGroup1..4 (attrs 1298–1301) form an allow-list. If
+      // the module sets any of them, the ship's group must match. We
+      // run a single EXISTS pair: if no allow-list rows exist the
+      // module is unrestricted, otherwise at least one must equal the
+      // ship's group.
+      sql += '''
+        AND (
+          NOT EXISTS (
+            SELECT 1 FROM type_dogma_attributes
+            WHERE type_id = t.id
+              AND attribute_id IN (1298, 1299, 1300, 1301)
+          )
+          OR EXISTS (
+            SELECT 1 FROM type_dogma_attributes
+            WHERE type_id = t.id
+              AND attribute_id IN (1298, 1299, 1300, 1301)
+              AND value = ?
+          )
+        )
+      ''';
+      args.add(shipGroupId);
+    }
+    if (shipTypeId != null) {
+      // canFitShipType1..4 (attrs 1308–1311) — analogous allow-list
+      // keyed on a specific ship type id (e.g. faction-fit modules).
+      sql += '''
+        AND (
+          NOT EXISTS (
+            SELECT 1 FROM type_dogma_attributes
+            WHERE type_id = t.id
+              AND attribute_id IN (1308, 1309, 1310, 1311)
+          )
+          OR EXISTS (
+            SELECT 1 FROM type_dogma_attributes
+            WHERE type_id = t.id
+              AND attribute_id IN (1308, 1309, 1310, 1311)
+              AND value = ?
+          )
+        )
+      ''';
+      args.add(shipTypeId);
+    }
+    // CPU / power-grid feasibility: if a single instance of the
+    // module already exceeds the ship's max output it can never fit,
+    // so hide it from the picker. Modules without the attribute (or
+    // with negative values, e.g. CPU/PG bonuses) silently pass.
+    if (shipCpuOutput != null) {
+      sql += '''
+        AND NOT EXISTS (
+          SELECT 1 FROM type_dogma_attributes
+          WHERE type_id = t.id AND attribute_id = 50 AND value > ?
+        )
+      ''';
+      args.add(shipCpuOutput);
+    }
+    if (shipPowerOutput != null) {
+      sql += '''
+        AND NOT EXISTS (
+          SELECT 1 FROM type_dogma_attributes
+          WHERE type_id = t.id AND attribute_id = 30 AND value > ?
+        )
+      ''';
+      args.add(shipPowerOutput);
     }
     final q = query.trim();
     if (q.isNotEmpty) {
@@ -544,16 +630,19 @@ class TypesDatabase extends ChangeNotifier {
 
     final typesByMarketGroup = <int, List<int>>{};
     final orphanTypes = <int>[];
+    final typeMarketGroup = <int, int?>{};
     for (final r in typeRows) {
       if (r['id'] is! num) continue;
       final tid = (r['id']! as num).toInt();
       final mgid = (r['market_group_id'] as num?)?.toInt();
+      typeMarketGroup[tid] = mgid;
       if (mgid == null) {
         orphanTypes.add(tid);
       } else {
         typesByMarketGroup.putIfAbsent(mgid, () => []).add(tid);
       }
     }
+    _typeMarketGroup = typeMarketGroup;
     _typesByMarketGroup = {
       for (final e in typesByMarketGroup.entries)
         e.key: List.unmodifiable(e.value),

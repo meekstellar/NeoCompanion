@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/types/presentation/eve_type_image.dart';
 import '../../../core/types/types_database.dart';
 import '../../../core/types/types_database_providers.dart';
+import 'market_group_tree.dart';
 
 /// Category id for Ship in CCP's SDE.
 const int _shipCategoryId = 6;
@@ -38,7 +39,6 @@ class _ShipPickerScreenState extends ConsumerState<ShipPickerScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: TextField(
-              autofocus: true,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.search),
                 hintText: 'Search ships',
@@ -81,25 +81,17 @@ class _ShipResultsList extends ConsumerWidget {
         if (results.isEmpty) {
           return const Center(child: Text('No matches'));
         }
-        return ListView.separated(
-          itemCount: results.length,
-          separatorBuilder: (_, _) => const Divider(height: 0),
-          itemBuilder: (context, i) {
-            final m = results[i];
-            final groupName =
-                m.groupId == null ? null : db.lookupGroup(m.groupId!);
-            return ListTile(
-              leading: EveTypeImage(
-                typeId: m.typeId,
-                kind: EveTypeImageKind.render,
-                size: 40,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              title: Text(m.name),
-              subtitle: groupName == null ? null : Text(groupName),
-              onTap: () => Navigator.of(context).pop<int>(m.typeId),
-            );
-          },
+        return MarketGroupTree(
+          db: db,
+          matches: results,
+          // Market group 4 = "Ships". The picker scopes to that
+          // subtree so the user navigates Frigates → Cruisers →
+          // … instead of seeing every published type at the root.
+          rootMarketGroupId: 4,
+          autoExpand: query.trim().isNotEmpty,
+          imageKind: EveTypeImageKind.render,
+          imageSize: 40,
+          onPick: (id) => Navigator.of(context).pop<int>(id),
         );
       },
     );

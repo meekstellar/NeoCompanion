@@ -10,6 +10,7 @@ import 'data/fitting_repository.dart';
 import 'domain/dogma_modifier.dart';
 import 'domain/fit_capacitor.dart';
 import 'domain/fit_defense.dart';
+import 'domain/fit_misc.dart';
 import 'domain/fit_resources.dart';
 
 /// Reads dogma attributes / effects / volumes for [shipTypeId] and every
@@ -178,6 +179,19 @@ final pilotShipModifiersProvider = FutureProvider.family<
 
   return out;
 });
+
+/// Targeting + navigation stats. Pure ship attributes today; pilot
+/// mods only apply to the few attrs we route through the dogma graph
+/// (currently just CPU/PG/cap — adding speed/agility/scan res to that
+/// graph is part of the broader skill bonus rollout).
+Future<FitMisc> loadFitMisc({
+  required TypesDatabase db,
+  required int shipTypeId,
+  Map<int, List<Modifier>> pilotMods = const {},
+}) async {
+  final shipAttrs = await db.typeDogmaAttributes(shipTypeId);
+  return computeFitMisc(shipAttrs: shipAttrs, pilotMods: pilotMods);
+}
 
 /// Maps a character's active skills to `(skillTypeId → level)`. Returns
 /// an empty map on failure or for characters whose skills aren't loaded
