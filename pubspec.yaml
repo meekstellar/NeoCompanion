@@ -71,6 +71,15 @@ dev_dependencies:
   sqflite_common_ffi: ^2.3.7
   args: ^2.7.0
 
+  # Generates Android mipmap + iOS Asset Catalog launcher icons from a
+  # single master in `assets/launcher/`. Run with
+  # `dart run flutter_launcher_icons` after editing the master.
+  flutter_launcher_icons: ^0.14.4
+
+  # Native splash screen generator. Run with
+  # `dart run flutter_native_splash:create` after editing config.
+  flutter_native_splash: ^2.4.6
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
@@ -116,3 +125,43 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Launcher icon generation. After changing the master assets in
+# `assets/launcher/`, run `dart run flutter_launcher_icons` to
+# regenerate Android mipmaps and the iOS Asset Catalog. The
+# `image_path` master is also what to upload to the Play Store as the
+# 512×512 listing icon (after resizing).
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/launcher/icon.png"
+  remove_alpha_ios: true
+  # The artwork has a strong dark-to-orange gradient — a solid
+  # adaptive-icon background colour would seam against it on launcher
+  # animations, so use the master image itself as the background and
+  # leave the foreground transparent. The launcher mask ends up
+  # cutting straight from the artwork.
+  adaptive_icon_background: "assets/launcher/icon.png"
+  adaptive_icon_foreground: "assets/launcher/icon_foreground.png"
+  min_sdk_android: 21
+
+# Native splash screen. Same background as the adaptive launcher icon
+# so there's no jarring step between the app icon's launch animation
+# and the splash itself, and the splash blends straight into the
+# in-app dark scaffold once Flutter renders. Regenerate with
+# `dart run flutter_native_splash:create` after editing this block.
+flutter_native_splash:
+  # Use the full artwork as a full-bleed background so the dark-to-
+  # orange gradient looks intentional. `color` is a fallback that
+  # only kicks in if the image is missing.
+  color: "#091311"
+  background_image: "assets/launcher/splash.png"
+  android_12:
+    # Android 12+ enforces a circular system splash icon with a solid
+    # background tint. Match the dark top of the gradient so the tiny
+    # icon area sits on a colour that the artwork reads as the sky.
+    color: "#091311"
+    image: "assets/launcher/splash_android12.png"
+  android: true
+  ios: true
+  fullscreen: false
