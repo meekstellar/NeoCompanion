@@ -44,6 +44,24 @@ class AssetsData {
   final Map<int, String> locationNames;
 }
 
+/// SDE type id for PLEX. Sums of `quantity` across every asset row
+/// with this type id give the character's total PLEX (vault + any
+/// stacks sitting in hangars / containers).
+const int plexTypeId = 44992;
+
+/// Total PLEX held by [characterId], derived from the cached
+/// [assetsProvider]. Returns 0 while assets are loading or on error so
+/// the UI can render unconditionally without a spinner.
+final characterPlexCountProvider =
+    FutureProvider.family<int, int>((ref, characterId) async {
+  final assets = await ref.watch(assetsProvider(characterId).future);
+  var total = 0;
+  for (final i in assets.items) {
+    if (i.typeId == plexTypeId) total += i.quantity;
+  }
+  return total;
+});
+
 final assetsProvider =
     FutureProvider.family<AssetsData, int>((ref, characterId) async {
   ref.watch(typesDatabaseRevisionProvider);

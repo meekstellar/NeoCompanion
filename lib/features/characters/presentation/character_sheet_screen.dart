@@ -7,6 +7,7 @@ import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/scope_compatibility.dart';
 import '../../../core/auth/sso_scopes.dart';
 import '../../../core/network/esi_error_message.dart';
+import '../../../core/types/presentation/eve_type_image.dart';
 import '../../../core/types/presentation/item_database_screen.dart';
 import '../../assets/asset_providers.dart';
 import '../../assets/presentation/assets_screen.dart';
@@ -17,6 +18,7 @@ import '../../industry/presentation/industry_jobs_screen.dart';
 import '../../loyalty/presentation/loyalty_points_screen.dart';
 import '../../planets/presentation/planetary_colonies_screen.dart';
 import '../../mail/presentation/mail_screen.dart';
+import '../../market/market_providers.dart';
 import '../../market/presentation/market_orders_screen.dart';
 import '../../server_status/data/dto/server_status.dart';
 import '../../server_status/server_status_providers.dart';
@@ -38,6 +40,7 @@ class CharacterSheetScreen extends ConsumerWidget {
     // screen's lifetime, which keeps the providers' cached values
     // around even between visits.
     ref.listen(assetsProvider(characterId), (_, _) {});
+    final plex = ref.watch(characterPlexCountProvider(characterId));
     return Scaffold(
       appBar: AppBar(
         title: sheet.maybeWhen(
@@ -165,7 +168,7 @@ class CharacterSheetScreen extends ConsumerWidget {
                   _MenuRow(
                     iconAsset: 'assets/icons/menu/Wallet.png',
                     title: 'Wealth',
-                    subtitle: '${_formatIsk(data.walletBalance)} ISK',
+                    subtitle: _wealthSubtitle(data.walletBalance, plex),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) =>
@@ -234,6 +237,17 @@ String _formatIsk(double balance) {
   return NumberFormat('#,##0.00', 'en_US').format(balance);
 }
 
+/// Subtitle for the Wealth row: ISK balance, plus PLEX count once
+/// assets resolve. While loading or on error the PLEX half is hidden
+/// rather than shown as `—`, so the row reads naturally during the
+/// first paint instead of advertising a missing field.
+String _wealthSubtitle(double walletBalance, AsyncValue<int> plex) {
+  final isk = '${_formatIsk(walletBalance)} ISK';
+  final count = plex.maybeWhen(data: (n) => n, orElse: () => null);
+  if (count == null) return isk;
+  return '$isk · ${NumberFormat('#,##0', 'en_US').format(count)} PLEX';
+}
+
 class _HeaderCard extends ConsumerWidget {
   const _HeaderCard({required this.data});
   final CharacterSheetData data;
@@ -247,6 +261,7 @@ class _HeaderCard extends ConsumerWidget {
         : data.nameOf(data.publicInfo.allianceId) ??
             'Alliance #${data.publicInfo.allianceId}';
     final status = ref.watch(serverStatusProvider);
+    final plexPrice = ref.watch(marketLatestPriceProvider(plexTypeId));
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -304,7 +319,7 @@ class _HeaderCard extends ConsumerWidget {
             const SizedBox(height: 10),
             const Divider(height: 1),
             const SizedBox(height: 8),
-            _ServerStatusLine(status: status),
+            _ServerStatusLine(status: status, plexPrice: plexPrice),
           ],
         ),
       ),
@@ -317,8 +332,9 @@ class _HeaderCard extends ConsumerWidget {
 /// from `serverStatusProvider`, so it updates in tandem with the
 /// character sheet refresh.
 class _ServerStatusLine extends StatelessWidget {
-  const _ServerStatusLine({required this.status});
+  const _ServerStatusLine({required this.status, required this.plexPrice});
   final AsyncValue<ServerStatus> status;
+  final AsyncValue<double?> plexPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -363,9 +379,56 @@ class _ServerStatusLine extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
+        const SizedBox(width: 8),
+        _PlexPriceBadge(price: plexPrice),
       ],
     );
   }
+}
+
+/// Trailing PLEX-price badge: PLEX icon · latest Jita daily average.
+/// Sourced from market history (cached server-side ~24h), not the
+/// live order book — close enough to "the Jita price" for a header
+/// glance, without paginating thousands of orders. Hidden until the
+/// price resolves so the row doesn't show a placeholder.
+class _PlexPriceBadge extends StatelessWidget {
+  const _PlexPriceBadge({required this.price});
+  final AsyncValue<double?> price;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isk = price.maybeWhen(
+      data: (p) => p == null ? null : _compactIsk(p),
+      orElse: () => null,
+    );
+    if (isk == null) return const SizedBox.shrink();
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        EveTypeImage(
+          typeId: plexTypeId,
+          size: 14,
+          borderRadius: BorderRadius.circular(2),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          '$isk ISK',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.hintColor),
+        ),
+      ],
+    );
+  }
+}
+
+/// PLEX trades in the millions; rendering 4,358,123.45 ISK in a 14px
+/// badge eats too much horizontal space. Compact to "4.36M" / "1.20B".
+String _compactIsk(double v) {
+  if (v >= 1e9) return '${(v / 1e9).toStringAsFixed(2)}B';
+  if (v >= 1e6) return '${(v / 1e6).toStringAsFixed(2)}M';
+  if (v >= 1e3) return '${(v / 1e3).toStringAsFixed(1)}K';
+  return v.toStringAsFixed(0);
 }
 
 class _LogoLine extends StatelessWidget {

@@ -72,3 +72,21 @@ final marketHistoryProvider = FutureProvider.family<List<MarketHistoryEntry>,
   final repo = ref.watch(marketRepositoryProvider);
   return repo.fetchHistory(typeId: key.typeId, regionId: key.regionId);
 });
+
+/// CCP's rolling per-type average price for every published type, in
+/// one shot. Cached server-side ~1h, so the family providers below
+/// share a single network round-trip.
+final marketGlobalPricesProvider = FutureProvider<Map<int, double>>((ref) {
+  return ref.watch(marketRepositoryProvider).fetchGlobalPrices();
+});
+
+/// Latest reference price for [typeId] from `/markets/prices/`. Used
+/// for header glances (e.g. the PLEX price next to the server status)
+/// where a one-number-fits-all aggregate is preferable to paginating
+/// the live order book — and necessary for items like PLEX that no
+/// longer trade through the public market at all.
+final marketLatestPriceProvider =
+    FutureProvider.family<double?, int>((ref, typeId) async {
+  final prices = await ref.watch(marketGlobalPricesProvider.future);
+  return prices[typeId];
+});

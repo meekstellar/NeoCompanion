@@ -24,6 +24,26 @@ class MarketRepository {
         .toList();
   }
 
+  /// `typeId → average_price` from `/markets/prices/`. Covers every
+  /// published type in one unauth call (cached server-side ~1h),
+  /// including ones that no longer post public orders — PLEX, in
+  /// particular, was moved to a private vault, so the regional orders
+  /// endpoint returns nothing for it but this aggregate still reports
+  /// CCP's rolling average. Also exposes `adjusted_price`, but for a
+  /// header glance the average is the right number.
+  Future<Map<int, double>> fetchGlobalPrices() async {
+    final res = await _esi.get<List<dynamic>>('/markets/prices/');
+    final out = <int, double>{};
+    for (final raw in res.data ?? const []) {
+      final m = (raw as Map).cast<String, dynamic>();
+      final tid = (m['type_id'] as num?)?.toInt();
+      final avg = (m['average_price'] as num?)?.toDouble();
+      if (tid == null || avg == null) continue;
+      out[tid] = avg;
+    }
+    return out;
+  }
+
   /// Up to one year of daily price/volume history for [typeId] in
   /// [regionId]. Unauthenticated; ESI caches the response ~24h
   /// server-side, our `CacheInterceptor` honours that. Types that
