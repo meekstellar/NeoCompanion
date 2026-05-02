@@ -9,6 +9,7 @@ import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/token_set.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../../core/notifications/notification_providers.dart';
+import '../../assets/asset_providers.dart';
 import '../../skills/domain/skill_queue_calculator.dart';
 import '../../skills/skill_providers.dart';
 import '../character_providers.dart';
@@ -117,6 +118,8 @@ class _CharacterCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sheet = ref.watch(characterSheetProvider(token.characterId));
     final queue = ref.watch(skillQueueProvider(token.characterId));
+    final cloneState = ref.watch(cloneStateProvider(token.characterId));
+    final plex = ref.watch(characterPlexCountProvider(token.characterId));
 
     final colors = Theme.of(context).colorScheme;
     return Material(
@@ -151,13 +154,26 @@ class _CharacterCard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      sheet.value?.publicInfo.name ?? token.characterName,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            sheet.value?.publicInfo.name ??
+                                token.characterName,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                        ),
+                        if (cloneState.value != null &&
+                            cloneState.value != CloneState.unknown) ...[
+                          const SizedBox(width: 8),
+                          _CloneChip(state: cloneState.value!),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 8),
                     _TrainingChip(
@@ -178,6 +194,11 @@ class _CharacterCard extends ConsumerWidget {
                           label: 'SP',
                           value: _formatSp(queue.value?.skills.totalSp),
                         ),
+                        if (plex.value != null && plex.value! > 0)
+                          _StatChip(
+                            label: 'PLEX',
+                            value: _formatPlex(plex.value!),
+                          ),
                       ],
                     ),
                   ],
@@ -368,6 +389,36 @@ class _StatChip extends StatelessWidget {
   }
 }
 
+/// Coloured Alpha/Omega badge — gold for Omega (paid), grey for Alpha
+/// (free). Inferred from the queue's training rate via
+/// [cloneStateProvider]; the unknown state is filtered out by the
+/// caller so this widget always has something to render.
+class _CloneChip extends StatelessWidget {
+  const _CloneChip({required this.state});
+  final CloneState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isOmega = state == CloneState.omega;
+    final color = isOmega ? const Color(0xFFD4AF37) : theme.hintColor;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        isOmega ? 'Ω' : 'α',
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 class _Pill extends StatelessWidget {
   const _Pill({required this.background, required this.child});
   final Color background;
@@ -424,6 +475,9 @@ String _formatSp(int? sp) {
   if (sp == null) return '—';
   return _compact(sp.toDouble());
 }
+
+String _formatPlex(int count) =>
+    NumberFormat('#,##0', 'en_US').format(count);
 
 String _compact(double v) {
   // Floor to one decimal so the chip never overstates a balance —
