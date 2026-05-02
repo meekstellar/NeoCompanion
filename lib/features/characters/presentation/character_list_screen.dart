@@ -426,9 +426,20 @@ String _formatSp(int? sp) {
 }
 
 String _compact(double v) {
-  if (v.abs() >= 1e9) return '${(v / 1e9).toStringAsFixed(1)}B';
-  if (v.abs() >= 1e6) return '${(v / 1e6).toStringAsFixed(1)}M';
-  if (v.abs() >= 1e3) return '${(v / 1e3).toStringAsFixed(1)}K';
+  // Floor to one decimal so the chip never overstates a balance —
+  // toStringAsFixed rounds half-up, which can quietly add ~40M to a
+  // 1.96B wallet (becomes "2.0B"). Truncation keeps the displayed
+  // number a safe lower bound on what the character actually has.
+  String floor1(double scaled) {
+    final tenths = (scaled * 10).floor();
+    final whole = tenths ~/ 10;
+    final frac = tenths.remainder(10).abs();
+    return '$whole.$frac';
+  }
+
+  if (v.abs() >= 1e9) return '${floor1(v / 1e9)}B';
+  if (v.abs() >= 1e6) return '${floor1(v / 1e6)}M';
+  if (v.abs() >= 1e3) return '${floor1(v / 1e3)}K';
   return NumberFormat('#,##0', 'en_US').format(v);
 }
 
