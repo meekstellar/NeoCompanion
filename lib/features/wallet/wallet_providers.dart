@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/network_providers.dart';
 import 'data/dto/wallet_journal_entry.dart';
+import 'data/dto/wallet_transaction_entry.dart';
 import 'data/wallet_repository.dart';
 
 final walletRepositoryProvider = Provider<WalletRepository>((ref) {
@@ -16,3 +17,13 @@ final walletJournalProvider =
       .watch(walletRepositoryProvider)
       .fetchJournalPage(characterId, page: 1);
 });
+
+/// Recent market transactions for the character. ESI returns up to ~2500
+/// most recent rows in a single call (no pagination), already sorted by
+/// date desc.
+final walletTransactionsProvider =
+    FutureProvider.family<List<WalletTransactionEntry>, int>(
+  (ref, characterId) {
+    return ref.watch(walletRepositoryProvider).fetchTransactions(characterId);
+  },
+);

@@ -24,6 +24,7 @@ import '../../server_status/data/dto/server_status.dart';
 import '../../server_status/server_status_providers.dart';
 import '../../skills/presentation/skill_queue_screen.dart';
 import '../../wallet/presentation/wallet_journal_screen.dart';
+import '../../wallet/presentation/wallet_transactions_screen.dart';
 import '../character_providers.dart';
 import 'character_details_screen.dart';
 
@@ -173,6 +174,17 @@ class CharacterSheetScreen extends ConsumerWidget {
                       MaterialPageRoute<void>(
                         builder: (_) =>
                             WalletJournalScreen(characterId: characterId),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/Journal.png',
+                    title: 'Transactions',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => WalletTransactionsScreen(
+                          characterId: characterId,
+                        ),
                       ),
                     ),
                   ),

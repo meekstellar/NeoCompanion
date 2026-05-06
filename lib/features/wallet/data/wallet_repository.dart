@@ -1,5 +1,6 @@
 import '../../../core/network/esi_client.dart';
 import 'dto/wallet_journal_entry.dart';
+import 'dto/wallet_transaction_entry.dart';
 
 class WalletRepository {
   WalletRepository(this._esi);
@@ -18,6 +19,19 @@ class WalletRepository {
     return res.data!
         .cast<Map<String, dynamic>>()
         .map(WalletJournalEntry.fromJson)
+        .toList();
+  }
+
+  Future<List<WalletTransactionEntry>> fetchTransactions(
+    int characterId,
+  ) async {
+    final res = await _esi.get<List<dynamic>>(
+      '/characters/$characterId/wallet/transactions/',
+      characterId: characterId,
+    );
+    return res.data!
+        .cast<Map<String, dynamic>>()
+        .map(WalletTransactionEntry.fromJson)
         .toList();
   }
 }
