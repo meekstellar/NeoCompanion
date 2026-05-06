@@ -147,16 +147,6 @@ class CharacterSheetScreen extends ConsumerWidget {
                     ),
                   ),
                   _MenuRow(
-                    iconAsset: 'assets/icons/menu/MarketOrders.png',
-                    title: 'Market Orders',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            MarketOrdersScreen(characterId: characterId),
-                      ),
-                    ),
-                  ),
-                  _MenuRow(
                     iconAsset: 'assets/icons/menu/Contracts.png',
                     title: 'Contracts',
                     onTap: () => Navigator.of(context).push(
@@ -185,6 +175,16 @@ class CharacterSheetScreen extends ConsumerWidget {
                         builder: (_) => WalletTransactionsScreen(
                           characterId: characterId,
                         ),
+                      ),
+                    ),
+                  ),
+                  _MenuRow(
+                    iconAsset: 'assets/icons/menu/MarketOrders.png',
+                    title: 'Market Orders',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            MarketOrdersScreen(characterId: characterId),
                       ),
                     ),
                   ),
