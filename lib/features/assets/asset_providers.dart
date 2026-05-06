@@ -45,8 +45,9 @@ class AssetsData {
 }
 
 /// SDE type id for PLEX. Sums of `quantity` across every asset row
-/// with this type id give the character's total PLEX (vault + any
-/// stacks sitting in hangars / containers).
+/// with this type id give the PLEX physically held in the character's
+/// hangars / containers. The account-wide PLEX Vault is not exposed by
+/// ESI, so PLEX sitting there is invisible until extracted.
 const int plexTypeId = 44992;
 
 /// Total PLEX held by [characterId], derived from the cached
