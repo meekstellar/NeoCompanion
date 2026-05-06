@@ -81,33 +81,31 @@ final allSkillsProvider =
   return AllSkillsData(skills: skills, names: names);
 });
 
-/// Account state inferred from the skill queue, since ESI doesn't
-/// expose Alpha/Omega directly. Picks the actively-training skill,
-/// computes its SP/hour from `(level_end_sp - training_start_sp) /
-/// (finish_date - start_date)`, and bins it: ~1500–2700 SP/h is
-/// Omega-class, anything below ~1500 is Alpha (which trains at half
-/// the Omega rate). Without an active skill we can't tell.
+/// Account state inferred from skills + queue, since ESI doesn't expose
+/// Alpha/Omega directly. Two definitive signals:
+///   1. Any skill with `active_skill_level < trained_skill_level` →
+///      Alpha (the game has clamped trained levels above the Alpha cap).
+///   2. Skill queue extending past 24h from now → Omega (Alpha queues
+///      are hard-capped at 24h).
+/// Otherwise unknown — a clean Alpha with a short queue is
+/// indistinguishable from Omega via ESI alone.
 enum CloneState { alpha, omega, unknown }
 
 final cloneStateProvider =
     FutureProvider.family<CloneState, int>((ref, characterId) async {
   final data = await ref.watch(skillQueueProvider(characterId).future);
-  final now = DateTime.now();
-  for (final e in data.queue) {
-    final start = e.startDate;
-    final finish = e.finishDate;
-    if (start == null || finish == null) continue;
-    if (finish.isBefore(now)) continue;
-    final spStart = e.trainingStartSp ?? e.levelStartSp;
-    final spDelta = e.levelEndSp - spStart;
-    final secs = finish.difference(start).inSeconds;
-    if (spDelta <= 0 || secs <= 0) continue;
-    final spPerHour = spDelta * 3600 / secs;
-    // Threshold sits roughly halfway between Alpha (~1350 SP/h at
-    // mid attributes) and Omega (~2700 SP/h). Anything above that is
-    // unambiguously paid; below it the queue is Alpha-throttled.
-    return spPerHour >= 1800 ? CloneState.omega : CloneState.alpha;
+
+  for (final s in data.skills.skills) {
+    if (s.activeSkillLevel < s.trainedSkillLevel) return CloneState.alpha;
   }
+
+  final omegaCutoff =
+      DateTime.now().add(const Duration(hours: 24, minutes: 5));
+  for (final e in data.queue) {
+    final finish = e.finishDate;
+    if (finish != null && finish.isAfter(omegaCutoff)) return CloneState.omega;
+  }
+
   return CloneState.unknown;
 });
 
