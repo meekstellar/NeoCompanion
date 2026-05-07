@@ -156,6 +156,18 @@ flutter test
 flutter analyze
 ```
 
+## License
+
+Source-available under the [PolyForm Noncommercial 1.0.0](LICENSE)
+license. Personal use, research, hobby projects and forks are welcome.
+**Commercial use — including paid distribution, ad-supported builds,
+or use inside a for-profit product — is not permitted without prior
+written agreement.**
+
+EVE Online and the EVE logo are trademarks of CCP hf. This is an
+unofficial third-party application; it is not endorsed by or
+affiliated with CCP hf.
+
 ## Architecture
 
 - **Riverpod** for dependency injection and state. Providers live next to the feature they serve (`lib/features/<feature>/`); cross-cutting concerns (network, auth, types DB, notifications) live in `lib/core/`.
