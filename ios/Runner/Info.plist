@@ -4,6 +4,11 @@
 	<dict>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
+		<!-- App uses only standard HTTPS/TLS via the OS — no proprietary
+		     cryptography. This declaration is required for App Store
+		     submission to skip annual ERN re-certification. -->
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
 		<key>CFBundleURLTypes</key>
 		<array>
 			<dict>
