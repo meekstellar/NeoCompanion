@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -9,7 +10,6 @@ import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/token_set.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../../core/notifications/notification_providers.dart';
-import '../../assets/asset_providers.dart';
 import '../../skills/domain/skill_queue_calculator.dart';
 import '../../skills/skill_providers.dart';
 import '../character_providers.dart';
@@ -25,19 +25,23 @@ class CharacterListScreen extends ConsumerStatefulWidget {
 
 class _CharacterListScreenState extends ConsumerState<CharacterListScreen> {
   Timer? _ticker;
-  DateTime _now = DateTime.now();
+  // Only the training-remaining text listens to this. Updating a
+  // ValueNotifier instead of calling setState avoids rebuilding the
+  // ListView and every _CharacterCard once per second.
+  final ValueNotifier<DateTime> _now = ValueNotifier(DateTime.now());
 
   @override
   void initState() {
     super.initState();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
+      if (mounted) _now.value = DateTime.now();
     });
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    _now.dispose();
     super.dispose();
   }
 
@@ -71,7 +75,7 @@ class _CharacterListScreenState extends ConsumerState<CharacterListScreen> {
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, i) => _CharacterCard(
                       token: list[i],
-                      now: _now,
+                      tick: _now,
                     ),
                   );
                 },
@@ -109,17 +113,16 @@ class _CharacterListScreenState extends ConsumerState<CharacterListScreen> {
 }
 
 class _CharacterCard extends ConsumerWidget {
-  const _CharacterCard({required this.token, required this.now});
+  const _CharacterCard({required this.token, required this.tick});
 
   final TokenSet token;
-  final DateTime now;
+  final ValueListenable<DateTime> tick;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sheet = ref.watch(characterSheetProvider(token.characterId));
     final queue = ref.watch(skillQueueProvider(token.characterId));
     final cloneState = ref.watch(cloneStateProvider(token.characterId));
-    final plex = ref.watch(characterPlexCountProvider(token.characterId));
 
     final colors = Theme.of(context).colorScheme;
     return Material(
@@ -179,7 +182,7 @@ class _CharacterCard extends ConsumerWidget {
                     _TrainingChip(
                       queue: queue.value,
                       skillNames: queue.value?.skillNames ?? const {},
-                      now: now,
+                      tick: tick,
                     ),
                     const SizedBox(height: 8),
                     Wrap(
@@ -194,11 +197,6 @@ class _CharacterCard extends ConsumerWidget {
                           label: 'SP',
                           value: _formatSp(queue.value?.skills.totalSp),
                         ),
-                        if (plex.value != null && plex.value! > 0)
-                          _StatChip(
-                            label: 'PLEX',
-                            value: _formatPlex(plex.value!),
-                          ),
                       ],
                     ),
                   ],
@@ -305,69 +303,67 @@ class _TrainingChip extends StatelessWidget {
   const _TrainingChip({
     required this.queue,
     required this.skillNames,
-    required this.now,
+    required this.tick,
   });
 
   final SkillQueueData? queue;
   final Map<int, String> skillNames;
-  final DateTime now;
+  final ValueListenable<DateTime> tick;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     if (queue == null) {
       return _Pill(
-        background:
-            Theme.of(context).colorScheme.surfaceContainerHigh,
-        child: Text(
-          '…',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      );
-    }
-
-    const calc = SkillQueueCalculator();
-    final entry = queue!.queue
-        .map((e) => calc.progressOf(e, now))
-        .where((p) => p.state == SkillTrainingState.training)
-        .firstOrNull;
-
-    final colors = Theme.of(context).colorScheme;
-    if (entry == null) {
-      return _Pill(
         background: colors.surfaceContainerHigh,
-        child: Text(
-          'Not training',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        child: Text('…', style: Theme.of(context).textTheme.bodySmall),
       );
     }
-
-    final name = skillNames[entry.entry.skillId] ?? '#${entry.entry.skillId}';
-    final level = _roman(entry.entry.finishedLevel);
-    final remaining = _formatDuration(entry.remaining);
-
-    return _Pill(
-      background: colors.surfaceContainerHigh,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$name $level',
-            style: Theme.of(context).textTheme.bodyMedium,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+    return ValueListenableBuilder<DateTime>(
+      valueListenable: tick,
+      builder: (context, now, _) {
+        const calc = SkillQueueCalculator();
+        final entry = queue!.queue
+            .map((e) => calc.progressOf(e, now))
+            .where((p) => p.state == SkillTrainingState.training)
+            .firstOrNull;
+        if (entry == null) {
+          return _Pill(
+            background: colors.surfaceContainerHigh,
+            child: Text(
+              'Not training',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          );
+        }
+        final name =
+            skillNames[entry.entry.skillId] ?? '#${entry.entry.skillId}';
+        final level = _roman(entry.entry.finishedLevel);
+        final remaining = _formatDuration(entry.remaining);
+        return _Pill(
+          background: colors.surfaceContainerHigh,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$name $level',
+                style: Theme.of(context).textTheme.bodyMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                remaining,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors.primary,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            remaining,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -475,9 +471,6 @@ String _formatSp(int? sp) {
   if (sp == null) return '—';
   return _compact(sp.toDouble());
 }
-
-String _formatPlex(int count) =>
-    NumberFormat('#,##0', 'en_US').format(count);
 
 String _compact(double v) {
   // Floor to one decimal so the chip never overstates a balance —

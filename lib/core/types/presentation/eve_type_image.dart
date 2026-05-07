@@ -27,9 +27,15 @@ class EveTypeImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final variant = kind == EveTypeImageKind.icon ? 'icon' : 'render';
-    final pixel = (size * MediaQuery.of(context).devicePixelRatio).round();
+    // Granular dependency — only rebuilds on DPR change, not on every
+    // MediaQuery field (orientation, keyboard inset, etc.).
+    final pixel = (size * MediaQuery.devicePixelRatioOf(context)).round();
+    final clamped = _clampSize(pixel);
     final url =
-        'https://images.evetech.net/types/$typeId/$variant?size=${_clampSize(pixel)}';
+        'https://images.evetech.net/types/$typeId/$variant?size=$clamped';
+    // Cap the in-memory bitmap to avoid keeping a 1024px copy decoded for
+    // a 32-px tile on a 4× device.
+    final cachedSide = (size * 2).round();
     final placeholder = SizedBox(
       width: size,
       height: size,
@@ -42,6 +48,8 @@ class EveTypeImage extends StatelessWidget {
       width: size,
       height: size,
       fit: BoxFit.cover,
+      memCacheWidth: cachedSide,
+      memCacheHeight: cachedSide,
       placeholder: (_, _) => placeholder,
       errorWidget: (_, _, _) => SizedBox(
         width: size,

@@ -53,8 +53,12 @@ const int plexTypeId = 44992;
 /// Total PLEX held by [characterId], derived from the cached
 /// [assetsProvider]. Returns 0 while assets are loading or on error so
 /// the UI can render unconditionally without a spinner.
+///
+/// autoDispose so the underlying assets fetch isn't pinned in memory
+/// for every character on the list screen — PLEX is only computed when
+/// a screen actually shows it.
 final characterPlexCountProvider =
-    FutureProvider.family<int, int>((ref, characterId) async {
+    FutureProvider.autoDispose.family<int, int>((ref, characterId) async {
   final assets = await ref.watch(assetsProvider(characterId).future);
   var total = 0;
   for (final i in assets.items) {
@@ -64,7 +68,7 @@ final characterPlexCountProvider =
 });
 
 final assetsProvider =
-    FutureProvider.family<AssetsData, int>((ref, characterId) async {
+    FutureProvider.autoDispose.family<AssetsData, int>((ref, characterId) async {
   ref.watch(typesDatabaseRevisionProvider);
   final repo = ref.watch(assetRepositoryProvider);
   final resolver = ref.watch(locationResolverProvider(characterId));

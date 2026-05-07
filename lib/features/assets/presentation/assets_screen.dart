@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -20,11 +22,26 @@ class AssetsScreen extends ConsumerStatefulWidget {
 
 class _AssetsScreenState extends ConsumerState<AssetsScreen> {
   final _filter = TextEditingController();
+  // Tree filtering is recursive over thousands of nodes; debounce keystrokes
+  // so typing doesn't rebuild the screen on every character.
+  Timer? _debounce;
+  String _query = '';
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _filter.dispose();
     super.dispose();
+  }
+
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      final next = value.trim().toLowerCase();
+      if (next == _query) return;
+      setState(() => _query = next);
+    });
   }
 
   @override
@@ -53,8 +70,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
   }
 
   Widget _build(AssetsData data) {
-    final query = _filter.text.trim().toLowerCase();
-    final view = _AssetsView(data: data, query: query);
+    final view = _AssetsView(data: data, query: _query);
 
     return Column(
       children: [
@@ -62,7 +78,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
           child: TextField(
             controller: _filter,
-            onChanged: (_) => setState(() {}),
+            onChanged: _onQueryChanged,
             decoration: const InputDecoration(
               hintText: 'Filter by type or custom name',
               prefixIcon: Icon(Icons.search),

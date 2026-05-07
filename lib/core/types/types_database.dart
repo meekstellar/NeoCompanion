@@ -733,6 +733,10 @@ class TypesDatabase extends ChangeNotifier {
       for (final e in groupsByCategory.entries)
         e.key: List.unmodifiable(e.value),
     };
+    // Wakes up ItemDatabaseGate when load() was kicked off async — the
+    // gate's AnimatedBuilder is listening to this ChangeNotifier and
+    // hides the "downloading" dialog as soon as isReady flips to true.
+    notifyListeners();
   }
 
   Future<Map<int, String>> _readNameMap(
