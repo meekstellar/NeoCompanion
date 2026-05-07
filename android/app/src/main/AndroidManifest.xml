@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for ESI API requests. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- connectivity_plus reads network type to gate retry behavior. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <!-- Skill-completion local notifications. POST_NOTIFICATIONS is required
          on API 33+; SCHEDULE_EXACT_ALARM lets us fire at the exact finish_date. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -9,7 +13,10 @@
     <application
         android:label="NeoCompanion"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

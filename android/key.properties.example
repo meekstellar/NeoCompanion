@@ -1,0 +1,9 @@
+# Copy to android/key.properties (gitignored) and fill in for release builds.
+# Generate the keystore once with:
+#   keytool -genkey -v -keystore ~/keystores/neocompanion-upload.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+# Then upload to Play Console under Setup → App signing → Upload key.
+storeFile=/absolute/path/to/neocompanion-upload.jks
+storePassword=
+keyAlias=upload
+keyPassword=

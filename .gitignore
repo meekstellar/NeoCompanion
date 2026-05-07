@@ -48,3 +48,8 @@ PLAN.md
 # Local SSO/runtime config — secrets stay out of the repo
 /config/*.json
 !/config/*.json.example
+
+# Android release signing — never commit the keystore or its passwords
+/android/key.properties
+/android/app/*.jks
+/android/app/*.keystore
