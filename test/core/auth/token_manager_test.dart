@@ -143,4 +143,28 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test('concurrent refreshes for the same character coalesce into one request',
+      () async {
+    await manager.store(sample(
+      access: 'expired',
+      refresh: 'refresh-1',
+      expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+    ));
+    adapter.queueResponse(FakeResponse(statusCode: 200, body: {
+      'access_token': 'fresh-access',
+      'refresh_token': 'refresh-2',
+      'expires_in': 1200,
+    }));
+
+    final results = await Future.wait([
+      manager.forceRefresh(90000001),
+      manager.forceRefresh(90000001),
+      manager.forceRefresh(90000001),
+    ]);
+
+    expect(results, ['fresh-access', 'fresh-access', 'fresh-access']);
+    // Only ONE refresh hit the network — the others reused the in-flight future.
+    expect(adapter.requests, hasLength(1));
+  });
 }

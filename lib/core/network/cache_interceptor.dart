@@ -7,6 +7,7 @@ import 'esi_constants.dart';
 
 const _cachedBodyKey = 'esiCachedBody';
 const _cachedEtagKey = 'esiCachedEtag';
+const _cachedHeadersKey = 'esiCachedHeaders';
 
 /// Cache-aware Dio interceptor:
 ///  * fresh entry → short-circuits to cached response (no network)
@@ -41,6 +42,9 @@ class CacheInterceptor extends Interceptor {
       options.headers['If-None-Match'] = entry.etag!;
       options.extra[_cachedBodyKey] = entry.body;
       options.extra[_cachedEtagKey] = entry.etag!;
+      // Snapshot the headers (incl. x-pages) into the request — if the
+      // cache is evicted between request and 304 we still have them.
+      options.extra[_cachedHeadersKey] = entry.headers;
     }
     handler.next(options);
   }
@@ -70,14 +74,19 @@ class CacheInterceptor extends Interceptor {
     if (response?.statusCode == 304 && cachedBody != null) {
       final etag = response!.headers.value('etag') ??
           options.extra[_cachedEtagKey] as String?;
-      // 304 keeps the previously-cached headers (incl. x-pages); we
-      // only refresh expiry/etag from the new response.
+      // 304 keeps the previously-cached headers (incl. x-pages); prefer
+      // the snapshot we stashed at request time so an eviction between
+      // request and 304 doesn't drop pagination metadata.
       final previous = _cache.get(_cacheKey(options));
+      final headers = (options.extra[_cachedHeadersKey]
+              as Map<String, List<String>>?) ??
+          previous?.headers ??
+          const {};
       final entry = CachedResponse(
         body: cachedBody,
         expiresAt: _parseExpires(response.headers.value('expires')),
         etag: etag,
-        headers: previous?.headers ?? const {},
+        headers: headers,
       );
       _cache.put(_cacheKey(options), entry);
       handler.resolve(_responseFromCache(options, entry));
