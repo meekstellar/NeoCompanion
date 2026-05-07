@@ -4,6 +4,12 @@ Unofficial EVE Online companion app for iOS and Android. Built with Flutter agai
 
 Multi-character read-only dashboard: skills, wallet, assets, contracts, fittings, industry jobs, planetary colonies, mail and more — all behind EVE SSO.
 
+| Characters | Character sheet |
+|---|---|
+| <img src="docs/screenshots/character_list.png" width="280"/> | <img src="docs/screenshots/character_sheet.png" width="280"/> |
+
+> Screenshots taken in `DEMO_MODE` against seeded fixtures — see [Demo / screenshot mode](#demo--screenshot-mode).
+
 ## Features
 
 ### Characters
@@ -122,6 +128,26 @@ flutter build ipa -t lib/main_prod.dart \
   --dart-define-from-file=config/prod.json \
   --obfuscate --split-debug-info=build/symbols/ios
 ```
+
+## Demo / screenshot mode
+
+Run the app against seeded fixtures instead of real ESI — useful for
+App Store / Play Store screenshots without exposing real characters,
+and for App Review which has to exercise the app without an EVE account.
+
+```bash
+flutter run -t lib/main_dev.dart \
+  --dart-define-from-file=config/dev.json \
+  --dart-define=DEMO_MODE=true
+```
+
+In demo mode:
+- A fictional `Capsuleer Demo` character is auto-loaded (no SSO flow)
+- Character sheet, skill queue, wallet journal/transactions, market orders, assets and server status are populated from `lib/core/demo/demo_data.dart`
+- The "Add Character" FAB and "Logout" action are hidden so taps can't reach real SSO
+- Type icons and portraits still load from images.evetech.net (real CCP artwork, no account data)
+
+To extend coverage to more screens, add overrides to `demoOverrides()` in `lib/core/demo/demo_overrides.dart`.
 
 ## Tests
 
