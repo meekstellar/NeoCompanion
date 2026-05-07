@@ -6,6 +6,15 @@
 -keep class io.flutter.plugins.** { *; }
 -keep class io.flutter.embedding.** { *; }
 
+# The Flutter engine ships references to Play Core's deferred-components
+# API for apps that opt into split installs. We don't, so R8 sees these
+# classes as missing and aborts. Tell it to ignore — at runtime the
+# corresponding code paths are never hit.
+-dontwarn com.google.android.play.core.**
+-dontwarn com.google.android.play.core.splitcompat.**
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**
+
 # flutter_local_notifications keeps a Gson serializer; preserve generic
 # signatures and the plugin's notification action receiver.
 -keepattributes Signature
