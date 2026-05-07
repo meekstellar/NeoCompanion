@@ -23,6 +23,7 @@ import '../../market/presentation/market_orders_screen.dart';
 import '../../server_status/data/dto/server_status.dart';
 import '../../server_status/server_status_providers.dart';
 import '../../skills/presentation/skill_queue_screen.dart';
+import '../../skills/skill_providers.dart';
 import '../../wallet/presentation/wallet_journal_screen.dart';
 import '../../wallet/presentation/wallet_transactions_screen.dart';
 import '../character_providers.dart';
@@ -236,6 +237,12 @@ class CharacterSheetScreen extends ConsumerWidget {
   Future<void> _logout(BuildContext context, WidgetRef ref) async {
     final navigator = Navigator.of(context);
     final tm = ref.read(tokenManagerProvider);
+    // Cancel pending skill-completion notifications before tearing down the
+    // token, otherwise alarms keep firing for a character we can no longer
+    // act on.
+    await ref
+        .read(skillNotificationSchedulerProvider)
+        .cancelFor(characterId);
     await tm.remove(characterId);
     if (ref.read(activeCharacterIdProvider) == characterId) {
       ref.read(activeCharacterIdProvider.notifier).set(null);
