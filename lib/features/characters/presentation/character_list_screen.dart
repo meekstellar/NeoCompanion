@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/token_set.dart';
+import '../../../core/demo/demo_mode.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../../core/notifications/notification_providers.dart';
 import '../../skills/domain/skill_queue_calculator.dart';
@@ -84,11 +85,13 @@ class _CharacterListScreenState extends ConsumerState<CharacterListScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addCharacter(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Character'),
-      ),
+      floatingActionButton: kDemoMode
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => _addCharacter(context, ref),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Character'),
+            ),
     );
   }
 

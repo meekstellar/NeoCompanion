@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/auth_providers.dart';
 import '../../../core/auth/scope_compatibility.dart';
 import '../../../core/auth/sso_scopes.dart';
+import '../../../core/demo/demo_mode.dart';
 import '../../../core/network/esi_error_message.dart';
 import '../../../core/types/presentation/eve_type_image.dart';
 import '../../../core/types/presentation/item_database_screen.dart';
@@ -50,10 +51,11 @@ class CharacterSheetScreen extends ConsumerWidget {
           orElse: () => const Text('Character'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => _logout(context, ref),
-            child: const Text('Logout'),
-          ),
+          if (!kDemoMode)
+            TextButton(
+              onPressed: () => _logout(context, ref),
+              child: const Text('Logout'),
+            ),
         ],
       ),
       body: sheet.when(
@@ -581,6 +583,10 @@ class _ScopeUpgradeBanner extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Demo mode loads a synthetic token with a stripped-down scope set
+    // — never prompt the screenshot session to re-auth.
+    if (kDemoMode) return const SizedBox.shrink();
+
     final tokens = ref.watch(storedCharactersProvider).value ?? const [];
     final token = tokens.where((t) => t.characterId == characterId).firstOrNull;
     if (token == null) return const SizedBox.shrink();

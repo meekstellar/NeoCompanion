@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/auth/auth_providers.dart';
 import 'core/config/app_config.dart';
 import 'core/config/flavor.dart';
+import 'core/demo/demo_mode.dart';
+import 'core/demo/demo_overrides.dart';
 import 'core/diagnostics/error_reporter.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -49,6 +51,7 @@ Future<void> bootstrap(Flavor flavor) async {
           notificationServiceProvider.overrideWithValue(notifications),
           typesDatabaseProvider.overrideWithValue(typesDb),
           appDatabaseProvider.overrideWithValue(appDb),
+          if (kDemoMode) ...demoOverrides(),
         ],
         child: const NeoCompanionApp(),
       ),
